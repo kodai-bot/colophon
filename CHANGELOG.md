@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.4 — 2026-09-16
+
+- Broadened the rotating footer quotes from 54 to 93, adding to every
+  existing category plus two new ones (Irish literary voices beyond
+  Yeats/Beckett, and Books & Libraries).
+
 ## v1.1.3 — 2026-09-16
 
 - Rewrote the Overview table and the Intake Mode / Admin Mode walkthrough
