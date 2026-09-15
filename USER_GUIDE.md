@@ -9,13 +9,14 @@ Problems? Contact whoever administers this system for your shop.
 
 ## Overview
 
-The system has three modes, all launched from the same startup screen:
+The system has four modes, all launched from the same startup screen:
 
 | Mode | Who uses it | What it does |
 |---|---|---|
-| **Counter** | All staff | Scan books and items for sale, take payment |
-| **Intake** | Stock volunteers | Scan in new deliveries, add books to the catalog |
-| **Admin** | Managers | Change prices, correct stock, view sales, browse catalog, send reports |
+| **Counter** | All staff | Scan items for sale, take payment |
+| **Intake** | Stock volunteers / managers | Browse the catalog, receive deliveries, correct prices and stock, add new items |
+| **Payments** | Anyone | Log sundry payments — room hire, memberships, event bookings, etc. |
+| **Admin** | Managers | Sales log and voids, send reports, sales tally, fix orphaned transactions |
 
 ---
 
@@ -79,43 +80,56 @@ Press **Esc** or click **⌂ Home** to return to the launcher.
 
 ---
 
-## Intake Mode — Receiving Stock
+## Intake Mode — Catalog, Stock, and Deliveries
 
-Use this mode when a delivery arrives or when adding books to the system for the first time.
+Intake mode is the working home for the catalog: browsing it, receiving deliveries, correcting prices and stock, and adding new items. No PIN required.
+
+### Browsing and searching the catalog
+
+The main screen shows the full catalog in a table. Type part of a title into the search box and press **Enter** to filter it — or scan a barcode to jump straight to that item.
 
 ### Scanning a delivery
 
-1. Scan the barcode on the book.
-2. **If the book is already in the system:** a quantity panel appears showing the current stock. Use **+** and **−** (or the buttons) to set how many copies arrived, then press **Enter** to confirm.
-3. **If the book is new:** the system looks it up online (Open Library). If found, it shows the title, author, publisher and year, then a price entry box appears — type the price and press **Enter**. The book is added to the catalog.
-4. **If not found online:** a message appears suggesting you add it via Admin mode (or try a different barcode orientation).
+1. Scan the barcode on the item.
+2. **If it's already in the system:** a quantity panel appears showing the current stock. Set how many copies arrived and press **Enter** to confirm.
+3. **If it's new:** the system looks it up online (Open Library). If found, it shows the title, author, publisher and year, then a price entry box appears — type the price and press **Enter**. The item is added to the catalog.
+4. **If not found online:** a message appears suggesting you add it manually (press **A**), or try a different barcode orientation.
 
-The session totals on the right keep a running count of books scanned and copies added.
+### Receiving several different items at once
 
-Press **Esc** or **⌂ Home** when done.
+Highlight each item in the catalog table and press **M** to mark it (a ✓ appears). Once you have marked everything from the delivery, press **+**: instead of asking for a quantity per item, it applies the same quantity to every marked item in one step — useful when a box contains several copies each of several different titles.
+
+### Correcting a price or stock count
+
+1. Search for the item and highlight it in the table.
+2. Press **P** to change its price, or **S** to correct its stock count, and press **Enter** to confirm.
+
+Use stock correction after a stocktake, or if an item has been misplaced.
+
+### Adding an item manually
+
+For items without a barcode (local publications, old books, self-published items, or anything the online lookup can't find):
+
+1. Press **A**.
+2. Fill in the details — only **Title** is required. Press **Tab** to move between fields: Title, Author, Publisher, Year, Price, Copies in stock.
+3. Save. The system assigns a scannable barcode automatically and shows it on screen.
+4. To print a label, run `python scripts/gen_barcode.py --sheet` from the terminal — this produces a print sheet including the new item.
+
+The item is immediately available in the catalog and can be sold at the counter once the label is printed and stuck on.
+
+Press **Esc** to cancel the current entry, or to return to the launcher from the main catalog screen.
 
 ---
 
-## Admin Mode — Management Functions
+## Admin Mode — Sales, Reports, and Reconciliation
 
 Admin mode is PIN protected. The PIN is set in `config/settings.yaml`.
 
-Press **1**, **2**, **3**, **4**, or **5** to navigate, or click the menu buttons.
+Price changes, stock corrections, catalog browsing, and adding items live in **Intake Mode** (see above) — Admin mode is for sales history, reporting, and fixing data issues.
 
-### [1] Change a book price
+Press **1**, **2**, **3**, or **4** to navigate, or click the menu buttons.
 
-1. Type part of the book title and press **Enter** to search.
-2. The current price is shown.
-3. Type the new price and press **Enter**.
-
-### [2] Correct stock count
-
-1. Search by title as above.
-2. Type the correct number of copies in stock and press **Enter**.
-
-Use this after a stocktake, or if you know a book has been misplaced.
-
-### [3] View today's sales log
+### [1] Sales log
 
 Shows every transaction from today in reverse order (most recent first), including:
 - Time of sale
@@ -123,42 +137,27 @@ Shows every transaction from today in reverse order (most recent first), includi
 - Price
 - Payment method (CASH / CARD / — if not recorded)
 
-Voided sales are shown marked with ✗ and **[VOID]** — they remain in the log as an audit trail but are not counted in totals.
+Highlight a sale and press **V** (with confirmation) to void it — voided sales are shown marked with ✗ and **[VOID]**. They remain in the log as an audit trail but are not counted in totals, and voiding a sale returns its stock to the catalog.
 
-### [4] Send today's report to office
+### [2] Send report
 
-1. The screen shows whether the office share is connected or not.
-2. Click **Send Report**.
-3. Four CSV files are written:
+1. The screen shows whether the office share is connected, and where the report for the selected date will be written.
+2. Pick **Today**, **Yesterday**, or type a date (`YYYY-MM-DD`) and press Enter.
+3. Send the report. Four CSV files are written into a `YYYY/MM/` folder under the office share (or `sync/` locally if the share isn't available):
    - `sales_YYYY-MM-DD.csv` — every transaction with price and payment method
+   - `payments_YYYY-MM-DD.csv` — sundry payments logged that day (room hire, memberships, etc.)
    - `summary_YYYY-MM-DD.csv` — totals including cash vs. card breakdown
-   - `catalog_YYYY-MM-DD.csv` — full inventory: every book with price and stock count
-   - `low_stock_YYYY-MM-DD.csv` — items running low (if any)
-4. If the office share is not available, files are saved locally to the `sync/` folder instead.
+   - `catalog_YYYY-MM-DD.csv` — full inventory: every item with price and stock count
 
-### [6] Add book manually
+### [3] Sales tally
 
-For books without a barcode (local publications, old books, self-published items):
+Item-by-item sales totals — quantity, revenue, and cash/card split — for **today**, **this month**, or **all time**. Use this to see what's actually selling. Export the current view to CSV from the same screen.
 
-1. Press **6** or click **Add book manually**.
-2. Fill in the details — only **Title** is required. Press **Tab** to move between fields:
-   - Title, Author, Publisher, Year, Price, Copies in stock
-3. Click **✦ Save Book**.
-4. The system assigns a scannable barcode automatically and shows it on screen.
-5. To print a label, run `python scripts/gen_barcode.py --sheet` from the terminal — this produces a print sheet including the new book.
+### [4] Fix orphaned
 
-The book is immediately available in the catalog and can be sold at the counter once the label is printed and stuck on.
+Lists transactions that were recorded without a payment method (for example, if the till was interrupted mid-sale). Select one and assign **Cash** or **Card** to correct it retroactively.
 
-### [5] Browse catalog
-
-Shows the full book catalog sorted A–Z. Use this to:
-- See what's in the system and check stock levels
-- Verify a book was added correctly after intake
-- Check publisher and edition details for books with multiple editions
-
-Type a title fragment in the search box and press **Enter** to filter. Press **Esc** to return to the menu.
-
-Press **← Menu** or **Esc** to return to the menu from any section.
+Press **Esc** to return to the menu, or to the launcher from the main menu.
 
 ---
 
@@ -268,7 +267,7 @@ If the mount is not available when a report is sent, files go to `sync/` locally
 
 ### Automating the daily report
 
-The report can be sent manually via Admin → [4] at any time. To also run it automatically at 23:00 each night, add a cron job:
+The report can be sent manually via Admin → [2] Send report at any time. To also run it automatically at 23:00 each night, add a cron job:
 
 ```bash
 crontab -e
@@ -359,10 +358,10 @@ The barcode didn't pass checksum validation — the scan was incomplete or corru
 Check that the share is mounted (`ls /mnt/office`). If not, run `sudo mount -a` or reboot. Reports will save to `sync/` locally in the meantime.
 
 **Prices missing in sales log**
-A book was scanned but has no price set in the catalog. Go to Admin → [1] Change price and set it.
+A book was scanned but has no price set in the catalog. Go to Intake mode, find it, and press **P** to set a price.
 
 **In-house barcode not recognised at counter**
-The item was not registered via `gen_barcode.py --add` or Admin → [6]. Register it first, then scan again.
+The item was not registered via `gen_barcode.py --add` or Intake mode's **A** (Add Item). Register it first, then scan again.
 
 **Need to add a book that has no barcode at all**
-Use Admin → [6] Add book manually. The system will assign a barcode — print the label with `python scripts/gen_barcode.py --sheet`.
+In Intake mode, press **A** to add it manually. The system will assign a barcode — print the label with `python scripts/gen_barcode.py --sheet`.

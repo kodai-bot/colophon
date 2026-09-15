@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.1.3 — 2026-09-16
+
+- Rewrote the Overview table and the Intake Mode / Admin Mode walkthrough
+  sections in `USER_GUIDE.md`. They still described an old layout where
+  Admin owned price changes, stock corrections, catalog browsing, and
+  adding items — all of that lives in Intake mode now, and Admin covers
+  sales log/void, reports, sales tally, and fixing orphaned transactions.
+  Also fixed three stale "Admin → [N]" cross-references in Troubleshooting.
+
 ## v1.1.2 — 2026-09-16
 
 - Rewrote the Keyboard Reference in `USER_GUIDE.md` against the actual current
