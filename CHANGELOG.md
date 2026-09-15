@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.1.2 — 2026-09-16
+
+- Rewrote the Keyboard Reference in `USER_GUIDE.md` against the actual current
+  bindings — it still described an old key layout (Ctrl+P for pay, Admin mode
+  owning price/stock/add-item) from before those moved to Intake mode. Now
+  covers all four modes, including sub-screen keys (payment popup, void
+  confirmation).
+
 ## v1.1.1 — 2026-09-16
 
 - Fixed: Ctrl+Q inside Counter/Intake/Payments/Admin mode only returned to the

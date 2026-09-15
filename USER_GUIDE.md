@@ -284,29 +284,56 @@ Add this line (adjust the path to match your installation):
 
 ## Keyboard Reference
 
+Every mode shows its own active keys at the bottom of the screen — this table is a complete reference, including keys that only apply inside a sub-screen (e.g. the payment popup).
+
 ### Counter mode
 
 | Key | Action |
 |---|---|
 | Scan trigger | Log scanned book or in-house item |
-| **1** / **2** / **3** | Log non-ISBN item (items without barcodes) |
-| **Ctrl+P** | Open Subtotal / Pay |
-| **C** / **K** | Cash / Card (in payment screen) |
+| **1** – **4** | Log a non-ISBN item (items without barcodes, as configured in `settings.yaml`) |
+| **Ctrl+T** | Open Subtotal / Pay |
+| **C** / **K** | Cash / Card (in the payment popup) |
+| **Esc** | Skip / cancel the payment popup, or go back to the launcher |
 | **Ctrl+Z** | Undo last item |
+| **Ctrl+D** | Apply a discount |
+| **Ctrl+Q** | Quit the whole program (from any mode) |
+
+### Intake mode
+
+Intake also handles catalog browsing and price/stock corrections — not just receiving deliveries.
+
+| Key | Action |
+|---|---|
+| Scan trigger | Receive a delivery, or look up an item to select it |
+| **P** | Set price for the selected item |
+| **S** | Set stock count for the selected item |
+| **+** / **=** | Receive additional stock for the selected item |
+| **M** | Toggle mark on the selected item |
+| **A** | Add an item manually |
+| **Esc** | Cancel the current entry, or go back to the launcher |
+| **Ctrl+Q** | Quit the whole program (from any mode) |
+
+### Payments mode
+
+| Key | Action |
+|---|---|
 | **Esc** | Back to launcher |
 | **Ctrl+Q** | Quit the whole program (from any mode) |
 
 ### Admin mode
 
+PIN protected. Price changes, stock corrections, and adding items now live in **Intake mode** — Admin mode covers sales history, reporting, and reconciliation.
+
 | Key | Action |
 |---|---|
-| **1** | Change price |
-| **2** | Correct stock |
-| **3** | Sales log |
-| **4** | Send report |
-| **5** | Browse catalog |
-| **6** | Add book manually |
-| **Esc** | Back to menu / launcher |
+| **1** | Sales log — view and void today's transactions |
+| **2** | Send report — generate and send CSV reports to the office share |
+| **3** | Sales tally — totals by item for today / this month / all time, with export |
+| **4** | Fix orphaned — assign a missing cash/card payment method to old transactions |
+| **C** / **K** | Cash / Card (when manually logging a sale, or fixing an orphaned transaction) |
+| **V** | Confirm void (in the void-confirmation popup) |
+| **Esc** | Back to menu / launcher, or cancel the current popup |
 | **Ctrl+Q** | Quit the whole program (from any mode) |
 
 ---
