@@ -17,7 +17,7 @@ from datetime import datetime
 from app.utils import load_config, get_logger, timestamp_now
 from app.catalog import get_db
 from app.ui.quotes import get_quote_display
-from app.ui.widgets import BackButton
+from app.ui.widgets import BackButton, HintBar
 
 
 DEFAULT_PAYMENT_TYPES = [
@@ -162,6 +162,7 @@ class PaymentsApp(App):
 
     BINDINGS = [
         Binding("escape", "go_back", "Back", show=True),
+        Binding("ctrl+q", "quit", "Quit", show=True),
     ]
 
     def __init__(self):
@@ -225,9 +226,11 @@ class PaymentsApp(App):
                 yield Button("Cancel  [Esc]", id="btn-cancel")
             yield Static("", id="last-recorded")
             yield Static(get_quote_display(), id="footer-quote")
+            yield HintBar(id="hint-bar")
 
     def on_mount(self) -> None:
         self.query_one("#payment-type").focus()
+        self.query_one(HintBar).update_from(self.BINDINGS)
 
     # ── Validation & save ──────────────────────────────────────
 
@@ -324,6 +327,10 @@ class PaymentsApp(App):
 
     def action_go_back(self) -> None:
         self.exit()
+
+    def action_quit(self) -> None:
+        """Ctrl+Q exits the whole program, not just this mode."""
+        self.exit(result="quit")
 
 
 def main():

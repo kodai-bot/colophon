@@ -12,6 +12,11 @@ MODES
 
 ADMIN PIN:  set in config/settings.yaml (look for "admin: pin:")
 
+TO QUIT
+-------
+Ctrl+Q quits the whole program from any screen.
+(Esc / Back only leaves the current mode, not the program.)
+
 NON-ISBN ITEMS
 --------------
 Postcards, prints and other items without barcodes

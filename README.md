@@ -8,6 +8,8 @@ No subscription, no cloud account, no card-terminal integration required — it 
 
 **Origin:** Colophon was originally built for and is used daily at the Yeats Society Bookshop, Sligo, Ireland — a small volunteer-run heritage-site shop that had no dedicated IT budget and was previously tracking sales and stock by hand. It replaced pen-and-paper book-entry with barcode scanning and automatic daily reports to the office.
 
+![Counter mode — scanning items, running total, and non-ISBN item shortcuts](docs/screenshots/counter-mode.png)
+
 See **[USER_GUIDE.md](USER_GUIDE.md)** for full staff and setup documentation.
 
 ---
@@ -52,15 +54,18 @@ The database (`db/bookshop.db`) is created automatically on first run.
 ./scripts/launch.sh
 ```
 
-This opens the launcher screen with three modes:
+This opens the launcher screen with four modes:
+
+![Launcher — mode selector](docs/screenshots/launcher.png)
 
 | Mode | Who uses it |
 |---|---|
 | **Counter** | All staff — scan items, take payment |
 | **Intake** | Stock volunteers — receive deliveries |
+| **Payments** | Anyone — sundry payments (room hire, memberships, etc.) |
 | **Admin** | Managers — prices, stock, catalog, reports |
 
-Admin PIN is set in `config/settings.yaml`.
+Admin PIN is set in `config/settings.yaml`. Every mode shows its available keys at the bottom of the screen — **Ctrl+Q quits the whole program from anywhere**, not just the current mode.
 
 ---
 

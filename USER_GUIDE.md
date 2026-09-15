@@ -294,6 +294,7 @@ Add this line (adjust the path to match your installation):
 | **C** / **K** | Cash / Card (in payment screen) |
 | **Ctrl+Z** | Undo last item |
 | **Esc** | Back to launcher |
+| **Ctrl+Q** | Quit the whole program (from any mode) |
 
 ### Admin mode
 
@@ -306,6 +307,7 @@ Add this line (adjust the path to match your installation):
 | **5** | Browse catalog |
 | **6** | Add book manually |
 | **Esc** | Back to menu / launcher |
+| **Ctrl+Q** | Quit the whole program (from any mode) |
 
 ---
 

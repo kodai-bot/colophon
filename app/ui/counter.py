@@ -291,6 +291,7 @@ class CounterApp(App):
         Binding("2", "select_item('2')", "Item 2", show=True),
         Binding("3", "select_item('3')", "Item 3", show=True),
         Binding("4", "select_item('4')", "Item 4", show=True),
+        Binding("ctrl+q", "quit", "Quit", show=True),
     ]
 
     def __init__(self):
@@ -674,6 +675,10 @@ class CounterApp(App):
 
     def action_go_back(self) -> None:
         self.exit()
+
+    def action_quit(self) -> None:
+        """Ctrl+Q exits the whole program, not just this mode."""
+        self.exit(result="quit")
 
 
 def main():

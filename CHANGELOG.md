@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.1.1 — 2026-09-16
+
+- Fixed: Ctrl+Q inside Counter/Intake/Payments/Admin mode only returned to the
+  launcher instead of quitting the program (the launcher's mode-switch loop
+  never checked why a mode had exited). Each mode now signals a distinct
+  "quit" result, and Ctrl+Q is shown as a visible hint in every mode.
+- Added README screenshots.
+
 ## v1.1.0 — 2026-09-15
 
 Renamed and prepared for public release as **Colophon**.

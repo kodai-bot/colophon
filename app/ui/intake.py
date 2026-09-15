@@ -611,6 +611,7 @@ class IntakeApp(App):
         Binding("plus,kp_add,equals_sign", "receive", "Receive +", show=True),
         Binding("m", "toggle_mark", "Mark", show=True),
         Binding("a", "add_item", "Add Item", show=True),
+        Binding("ctrl+q", "quit", "Quit", show=True),
     ]
 
     def __init__(self):
@@ -1173,3 +1174,7 @@ class IntakeApp(App):
             self._exit_receive_mode()
             return
         self.exit()
+
+    def action_quit(self) -> None:
+        """Ctrl+Q exits the whole program, not just this mode."""
+        self.exit(result="quit")

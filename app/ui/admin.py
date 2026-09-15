@@ -501,6 +501,7 @@ class AdminApp(App):
         Binding("2", "menu_report", "Send report", show=True),
         Binding("3", "menu_tally", "Sales tally", show=True),
         Binding("4", "menu_orphans", "Fix orphaned", show=True),
+        Binding("ctrl+q", "quit", "Quit", show=True),
     ]
 
     def __init__(self):
@@ -1023,6 +1024,10 @@ class AdminApp(App):
     @on(Button.Pressed, "#back-btn")
     def _click_back(self) -> None:
         self.action_go_back()
+
+    def action_quit(self) -> None:
+        """Ctrl+Q exits the whole program, not just this mode."""
+        self.exit(result="quit")
 
     def action_go_back(self) -> None:
         if self._mode == "menu":

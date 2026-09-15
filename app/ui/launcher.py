@@ -15,6 +15,7 @@ from textual import on
 from datetime import datetime
 from app.utils import load_config
 from app.ui.quotes import get_quote_display
+from app.ui.widgets import HintBar
 
 
 CSS = """
@@ -82,6 +83,7 @@ class LauncherApp(App):
         Binding("3", "launch_payments", "Payments", show=True),
         Binding("4", "launch_admin", "Admin", show=True),
         Binding("q", "quit", "Quit", show=True),
+        Binding("ctrl+q", "quit", "Quit", show=False),
     ]
 
     def compose(self) -> ComposeResult:
@@ -118,6 +120,10 @@ class LauncherApp(App):
                 classes="mode-btn",
             )
             yield Static(get_quote_display(), id="footer-quote")
+            yield HintBar(id="hint-bar")
+
+    def on_mount(self) -> None:
+        self.query_one(HintBar).update_from(self.BINDINGS)
 
     @on(Button.Pressed, "#mode-counter")
     def _click_counter(self) -> None:
@@ -159,19 +165,23 @@ def main():
 
         if result == "counter":
             from app.ui.counter import CounterApp
-            CounterApp().run()
+            if CounterApp().run() == "quit":
+                break
 
         elif result == "intake":
             from app.ui.intake import IntakeApp
-            IntakeApp().run()
+            if IntakeApp().run() == "quit":
+                break
 
         elif result == "payments":
             from app.ui.payments import PaymentsApp
-            PaymentsApp().run()
+            if PaymentsApp().run() == "quit":
+                break
 
         elif result == "admin":
             from app.ui.admin import AdminApp
-            AdminApp().run()
+            if AdminApp().run() == "quit":
+                break
 
         else:
             break  # q or window closed
