@@ -1,0 +1,67 @@
+shop:
+  name: "My Shop"
+  location: "Town"
+  timezone: "Europe/Dublin"
+
+database:
+  path: "db/bookshop.db"
+
+catalog:
+  inhouse_prefix: "2000001"   # prefix for in-house EAN-13 barcodes (GS1 in-store range)
+
+api:
+  lookup_enabled: true         # set false for gallery/museum (manual entry only)
+  # Open Library - free, no key required
+  open_library_url: "https://openlibrary.org/api/books"
+  # Google Books - optional, add key if needed
+  google_books_url: "https://www.googleapis.com/books/v1/volumes"
+  google_books_key: ""
+  timeout_seconds: 5
+
+# Vocabulary used in all UI labels and CSV headers.
+# Change these per-deployment without touching code.
+ui:
+  app_title: "Bookshop"
+  item_singular: "book"
+  item_plural: "books"
+  barcode_label: "ISBN"
+  creator_label: "Author"
+  vendor_label: "Publisher"
+  misc_items_label: "NON-ISBN ITEMS"
+
+office_sync:
+  mount_path: "/mnt/office"          # where office share is mounted
+  report_subdir: "bookshop_reports"  # subfolder on the share
+  fallback_local: "sync/"            # used if mount unavailable
+  sync_time: "23:00"                 # daily sync time (cron)
+
+stock:
+  low_stock_threshold: 2             # flag when copies drop to this
+
+# Non-ISBN items selectable by number key at counter
+# Leave price blank to prompt staff to enter it at time of sale
+non_isbn_items:
+  - name: "Postcard"
+    price: 4.00
+  - name: "Postcard (large)"
+    price: 6.00
+  - name: "Tour admission"
+    price:                           # variable — staff enter per person at counter
+
+admin:
+  pin: "0000"                        # CHANGE THIS before going live
+
+logging:
+  log_dir: "logs/"
+  level: "INFO"
+
+payment_types:
+ - "Room Hire"
+ - "Membership"
+ - "Event Booking"
+ - "Donation"
+ - "Other"
+
+payments:
+ location_tag: "COUNTER"
+ require_reference: false

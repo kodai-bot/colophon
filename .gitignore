@@ -1,0 +1,43 @@
+# Virtual environment
+.venv/
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# Database (auto-created on first run)
+db/*.db
+
+# Logs and generated reports
+logs/
+sync/
+*.csv
+
+# Generated barcodes and printable sheets (contain live catalog data)
+barcodes/*.svg
+barcodes/*.html
+BookshopCounter_*.svg
+
+# Environment / secrets
+.env
+.env.local
+.env.*
+
+# Instance-specific config and quick-reference (copy the .example versions)
+config/settings.yaml
+README_LAUNCH.txt
+
+# Internal work notes, not part of the product
+AgentInstructionExportMod.txt
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*~
