@@ -10,7 +10,7 @@ No subscription, no cloud account, no card-terminal integration required — it 
 
 ![Counter mode — scanning items, running total, and non-ISBN item shortcuts](docs/screenshots/counter-mode.png)
 
-See **[USER_GUIDE.md](USER_GUIDE.md)** for full staff and setup documentation.
+See **[USER_GUIDE.md](USER_GUIDE.md)** for full staff and setup documentation. If you're an AI agent installing, verifying, or changing this project, read **[AGENTS.md](AGENTS.md)** first.
 
 ---
 

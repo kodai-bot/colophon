@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.2.1 — 2026-09-16
+
+- Added `AGENTS.md`: instructions for AI agents installing, verifying, or
+  changing this project — field-tested behaviour not to simplify away,
+  setup/verification checklists, and workflow rules. Reflects how this
+  project has actually been built: human director, AI agents, shop staff
+  as field testers. Fixed one factual error before merging (DB connection
+  setup is in `app/catalog.py`, not `app/utils.py`).
+
 ## v1.2.0 — 2026-09-16
 
 Response to an external documentation-only review (`COLOPHON_REVIEW_BRIEF.md`). Every finding was verified against the actual code first; several were already stale from prior fixes or simply incorrect (noted below). The brief's three proposed large structural rewrites — a stock event ledger, money as integer cents, and VAT support — were deliberately deferred: no evidence of stock drift, rounding, or VAT issues in production, and each is an invasive schema change not worth making without cause.
