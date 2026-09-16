@@ -12,12 +12,12 @@ from textual.widgets import Static, Input, Button, DataTable
 from textual.containers import Horizontal, Vertical
 from textual.binding import Binding
 from textual.screen import ModalScreen
-from textual import on
+from textual import on, work
 
 from datetime import datetime
 from app.utils import load_config, get_logger, timestamp_now
 from app.catalog import (
-    get_db, add_item, get_item, is_valid_barcode, get_inhouse_prefix,
+    get_db, add_item, get_item, normalize_barcode, get_inhouse_prefix,
     make_inhouse_barcode, next_inhouse_number,
 )
 from app.barcode import generate_svg, generate_sheet
@@ -793,8 +793,9 @@ class IntakeApp(App):
     async def search_catalog(self, event: Input.Submitted) -> None:
         term = event.value.strip()
         event.input.value = ""
-        if is_valid_barcode(term) or term.startswith(self._inhouse_prefix):
-            await self._process_scan(term)
+        normalized = normalize_barcode(term)
+        if normalized or term.startswith(self._inhouse_prefix):
+            await self._process_scan(normalized or term)
         else:
             self._load_catalog_table(term)
 
@@ -805,7 +806,14 @@ class IntakeApp(App):
         barcode = event.value.strip()
         event.input.value = ""
         if barcode:
-            await self._process_scan(barcode)
+            await self._process_scan(normalize_barcode(barcode) or barcode)
+
+    @work(thread=True)
+    def _lookup_openlibrary_worker(self, barcode: str) -> dict | None:
+        """Run the Open Library HTTP call off the UI thread so a slow/absent
+        network connection doesn't freeze the interface during a scan."""
+        from app.catalog import lookup_openlibrary
+        return lookup_openlibrary(barcode, self.config, self.logger)
 
     async def _process_scan(self, barcode: str) -> None:
         item = get_item(barcode, self.conn)
@@ -831,8 +839,7 @@ class IntakeApp(App):
 
         self.query_one("#selection-info").update("  Querying Open Library…")
 
-        from app.catalog import lookup_openlibrary
-        api_item = lookup_openlibrary(barcode, self.config, self.logger)
+        api_item = await self._lookup_openlibrary_worker(barcode).wait()
 
         if api_item:
             api_item.setdefault("price", None)
@@ -959,11 +966,17 @@ class IntakeApp(App):
             return
         now = datetime.now().isoformat()
         for barcode in barcodes:
+            old_row = self.conn.execute(
+                "SELECT price FROM catalog WHERE barcode = ?", (barcode,)
+            ).fetchone()
+            old_price = old_row["price"] if old_row else None
             self.conn.execute(
                 "UPDATE catalog SET price = ?, updated_at = ? WHERE barcode = ?",
                 (price, now, barcode),
             )
-            self.logger.info(f"Intake: price set €{price:.2f} for barcode={barcode}")
+            self.logger.info(
+                f"Intake: price changed for barcode={barcode} old={old_price} new={price:.2f}"
+            )
         self.conn.commit()
         term = self.query_one("#catalog-search-input").value.strip()
         self._load_catalog_table(term)
@@ -1005,11 +1018,17 @@ class IntakeApp(App):
             return
         now = datetime.now().isoformat()
         for barcode in barcodes:
+            old_row = self.conn.execute(
+                "SELECT stock FROM catalog WHERE barcode = ?", (barcode,)
+            ).fetchone()
+            old_stock = old_row["stock"] if old_row else None
             self.conn.execute(
                 "UPDATE catalog SET stock = ?, updated_at = ? WHERE barcode = ?",
                 (stock, now, barcode),
             )
-            self.logger.info(f"Intake: stock set to {stock} for barcode={barcode}")
+            self.logger.info(
+                f"Intake: stock changed for barcode={barcode} old={old_stock} new={stock}"
+            )
         self.conn.commit()
         term = self.query_one("#catalog-search-input").value.strip()
         self._load_catalog_table(term)

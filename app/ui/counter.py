@@ -19,7 +19,7 @@ from datetime import datetime
 import time
 
 from app.utils import load_config, get_logger
-from app.catalog import get_db, resolve_barcode, decrement_stock, is_valid_barcode, get_inhouse_prefix
+from app.catalog import get_db, resolve_barcode, decrement_stock, normalize_barcode, get_inhouse_prefix
 from app.logger import record_sale, void_last_sale
 from app.ui.widgets import (
     HeaderBar, ScanDisplay, DailyManifest,
@@ -402,13 +402,14 @@ class CounterApp(App):
             return  # debounce: swallow rapid double-fire from scanner
         self._last_scan_at = now
 
-        if not is_valid_barcode(barcode):
+        normalized = normalize_barcode(barcode)
+        if normalized is None:
             self.query_one(ScanDisplay).show_book(
                 f"Bad scan: {barcode}", "Not a valid barcode — try again", "", ok=False
             )
             return
 
-        await self._process_barcode(barcode)
+        await self._process_barcode(normalized)
 
     async def _process_barcode(self, barcode: str) -> None:
         scan = self.query_one(ScanDisplay)
