@@ -7,8 +7,9 @@ To start: double-click launch.sh
 MODES
 -----
 1. Counter    — daily sales scanning, all staff
-2. Intake     — scan in new deliveries and stock
-3. Admin      — prices, corrections, sales log
+2. Intake     — catalog, deliveries, prices and stock corrections
+3. Payments   — room hire, memberships, and other sundry payments
+4. Admin      — sales log, reports, reconciliation (PIN protected)
 
 ADMIN PIN:  set in config/settings.yaml (look for "admin: pin:")
 

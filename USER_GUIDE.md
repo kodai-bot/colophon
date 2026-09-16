@@ -28,7 +28,7 @@ Double-click **launch.sh** on the desktop, or open a terminal and run:
 ./scripts/launch.sh
 ```
 
-The launcher screen appears. Press **1**, **2**, or **3** to enter a mode, or click the button.
+The launcher screen appears. Press **1**, **2**, **3**, or **4** to enter a mode, or click the button.
 
 ---
 
@@ -61,7 +61,7 @@ For **Tour admission**: a box appears asking for the amount. Type the price for 
 
 When all items are scanned:
 
-1. Press **Ctrl+P** (or click the green **Subtotal / Pay** button).
+1. Press **Ctrl+T** (or click the green **Subtotal / Pay** button).
 2. A box shows the number of items and the total amount.
 3. Press **C** for cash or **K** for card.
 4. The basket clears and the screen resets for the next customer.
@@ -72,7 +72,11 @@ When all items are scanned:
 
 Scanned the wrong book? Press **Ctrl+Z** immediately. This removes the last item from the basket and restores the stock count. You can press Ctrl+Z multiple times to remove more items.
 
-Undo only works for sales made today.
+Undo only works for sales made today. All timestamps and "today" boundaries throughout Colophon use the machine's local time, not UTC — set your system timezone correctly and this handles daylight saving automatically.
+
+### Applying a discount
+
+Press **Ctrl+D** to open the discount box. A discount is applied to the whole basket as a fixed euro amount (not a percentage), capped at the basket total — it isn't per item. It's recorded as its own "Discount" line with a negative price, tied to the same transaction, so it appears in `sales_*.csv` and is already reflected in the totals in `summary_*.csv`.
 
 ### Leaving Counter mode
 
@@ -117,7 +121,25 @@ For items without a barcode (local publications, old books, self-published items
 
 The item is immediately available in the catalog and can be sold at the counter once the label is printed and stuck on.
 
+### Logging a sale directly from the catalog
+
+Selecting a single item and clicking **Log Sale** records one sale for that item without going through Counter mode — useful for a quick manual sale while you're already looking an item up. It opens the same Cash/Card choice as the counter (**C** / **K**, or **Esc** to cancel).
+
 Press **Esc** to cancel the current entry, or to return to the launcher from the main catalog screen.
+
+---
+
+## Payments Mode — Sundry Payments
+
+No PIN required. Use this for anything that isn't a counter sale — room hire, memberships, event bookings, and similar one-off payments.
+
+1. Select a **Type** from the list (configured in `settings.yaml` under `payment_types`).
+2. Enter the payer's **Name** (required) and the **Amount** in euros (required).
+3. Choose **Cash** or **Card**.
+4. Optionally add a **Reference** (a booking or membership number) and **Notes**.
+5. Press **Record Payment**, or **Esc** to cancel.
+
+Each entry is timestamped and appears in that day's `payments_YYYY-MM-DD.csv` report — it does not affect the book/item sales totals.
 
 ---
 
@@ -174,10 +196,10 @@ See the **Setup & Deployment** section below for how to create and print these.
 ### First-time setup on a new machine
 
 ```bash
-# Install the venv package if needed (Kubuntu/Ubuntu)
+# Install the venv package if needed (Kubuntu/Ubuntu) — adjust the version to match your Python
 sudo apt install python3.14-venv
 
-# From inside the bookshop_logger/ folder:
+# From inside the colophon/ folder:
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -188,12 +210,16 @@ The database (`db/bookshop.db`) is created automatically on first run. No separa
 
 ### Moving to a new machine
 
-Copy the entire `bookshop_logger/` folder. If you want to bring the catalog and sales history:
+Copy the entire `colophon/` folder. If you want to bring the catalog and sales history:
 
 - Copy `db/bookshop.db` — this contains the full catalog and all sales records.
 - The database upgrades itself on startup; no manual migration needed.
 
 If starting fresh (e.g. a clean go-live), just copy the code folder without the `db/` folder. A new empty database will be created on first run.
+
+### Quick-reference card
+
+`README_LAUNCH.example.txt` is a short, printable cheat sheet meant to be copied to `README_LAUNCH.txt`, filled in with your shop's real PIN and contact details, and kept by the till for staff — it's not meant to be read as documentation on its own.
 
 ### Configuration
 
@@ -253,12 +279,26 @@ The report system writes CSVs to a network share if one is mounted at `/mnt/offi
 
 **Samba (Windows share / NAS):**
 ```
-//server-name/share  /mnt/office  cifs  username=USER,password=PASS,uid=1000,gid=1000  0  0
+//server-name/share  /mnt/office  cifs  credentials=/etc/colophon/smb-credentials,uid=1000,gid=1000,_netdev,nofail,x-systemd.automount  0  0
 ```
+
+Put the username/password in `/etc/colophon/smb-credentials` instead of the fstab line itself (`username=... password=...` in fstab is world-readable by default):
+
+```
+username=your-username
+password=your-password
+```
+
+```bash
+sudo chmod 600 /etc/colophon/smb-credentials
+sudo chown root:root /etc/colophon/smb-credentials
+```
+
+`nofail` matters: without it, a laptop can hang at boot when the NAS happens to be off or unreachable, which defeats the whole point of the `sync/` local fallback.
 
 **NFS:**
 ```
-server-name:/share   /mnt/office  nfs   defaults  0  0
+server-name:/share   /mnt/office  nfs   defaults,_netdev,nofail  0  0
 ```
 
 Then run `sudo mount -a` to mount immediately without rebooting.
@@ -273,11 +313,20 @@ The report can be sent manually via Admin → [2] Send report at any time. To al
 crontab -e
 ```
 
-Add this line (adjust the path to match your installation):
+Add these lines (adjust the path to match your installation):
 
 ```
-0 23 * * * cd /path/to/Bookshop_App && .venv/bin/python -m app.summary
+0 23 * * * cd /path/to/colophon && .venv/bin/python -m app.summary >> logs/summary_cron.log 2>&1
+5 23 * * * cd /path/to/colophon && .venv/bin/python -m app.backup  >> logs/backup_cron.log 2>&1
 ```
+
+Redirecting output to a log file matters — cron discards stdout/stderr by default, so without this, a failure (e.g. a bad path, a missing dependency) fails silently every night with no record anywhere.
+
+The second line runs a nightly database backup — see "Database backups" below.
+
+### Database backups
+
+`python -m app.backup` copies the live database using SQLite's own online backup API, which is safe to run even while the app is open (a plain file copy is not, and can silently produce a corrupt backup). It writes to `backups/` on the office share, or `sync/backups/` locally if the share isn't available, and automatically keeps only the most recent 14 daily backups. Before this existed, there was no backup of the shop's catalog and sales data at all beyond whatever CSV reports had already been sent.
 
 ---
 
@@ -290,7 +339,7 @@ Every mode shows its own active keys at the bottom of the screen — this table 
 | Key | Action |
 |---|---|
 | Scan trigger | Log scanned book or in-house item |
-| **1** – **4** | Log a non-ISBN item (items without barcodes, as configured in `settings.yaml`) |
+| **1** – **4** | Log a non-ISBN item (items without barcodes, as configured in `settings.yaml` — capped at 4 keyboard slots; the on-screen buttons support more) |
 | **Ctrl+T** | Open Subtotal / Pay |
 | **C** / **K** | Cash / Card (in the payment popup) |
 | **Esc** | Skip / cancel the payment popup, or go back to the launcher |
@@ -310,6 +359,7 @@ Intake also handles catalog browsing and price/stock corrections — not just re
 | **+** / **=** | Receive additional stock for the selected item |
 | **M** | Toggle mark on the selected item |
 | **A** | Add an item manually |
+| **C** / **K** | Cash / Card (in the Log Sale popup, after clicking Log Sale) |
 | **Esc** | Cancel the current entry, or go back to the launcher |
 | **Ctrl+Q** | Quit the whole program (from any mode) |
 
@@ -329,8 +379,7 @@ PIN protected. Price changes, stock corrections, and adding items now live in **
 | **1** | Sales log — view and void today's transactions |
 | **2** | Send report — generate and send CSV reports to the office share |
 | **3** | Sales tally — totals by item for today / this month / all time, with export |
-| **4** | Fix orphaned — assign a missing cash/card payment method to old transactions |
-| **C** / **K** | Cash / Card (when manually logging a sale, or fixing an orphaned transaction) |
+| **4** | Fix orphaned — assign a missing cash/card payment method to old transactions (Cash/Card are buttons here, not keys) |
 | **V** | Confirm void (in the void-confirmation popup) |
 | **Esc** | Back to menu / launcher, or cancel the current popup |
 | **Ctrl+Q** | Quit the whole program (from any mode) |

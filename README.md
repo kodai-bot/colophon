@@ -31,7 +31,7 @@ Commercial POS systems (Square, Vend, Lightspeed, etc.) charge ongoing subscript
 ## Setup (new machine)
 
 ```bash
-# Install venv support if needed (Kubuntu/Ubuntu)
+# Install venv support if needed (Kubuntu/Ubuntu) — adjust the version to match your Python
 sudo apt install python3.14-venv
 
 # From inside the Colophon folder:
@@ -79,7 +79,7 @@ Admin PIN is set in `config/settings.yaml`. Every mode shows its available keys 
 .venv/bin/python -m app.summary --date 2025-06-01
 ```
 
-Generates four CSV files: sales, summary (with cash/card breakdown), full catalog inventory, and low stock (if any). Written to the office share if mounted, otherwise to `sync/` locally.
+Generates four CSV files — sales, sundry payments, summary (with cash/card breakdown), and full catalog inventory — into a `YYYY/MM/` folder under the office share if mounted, otherwise under `sync/` locally.
 
 ---
 
@@ -101,13 +101,18 @@ python scripts/gen_barcode.py --list
 
 ---
 
-## Automating the daily report (cron)
+## Automating the daily report and backup (cron)
 
 ```bash
 crontab -e
 # Add (adjust path to match your installation):
-0 23 * * * cd /path/to/colophon && .venv/bin/python -m app.summary
+0 23 * * * cd /path/to/colophon && .venv/bin/python -m app.summary >> logs/summary_cron.log 2>&1
+5 23 * * * cd /path/to/colophon && .venv/bin/python -m app.backup  >> logs/backup_cron.log 2>&1
 ```
+
+The `>> logs/*.log 2>&1` matters — cron discards output by default, so without it a failure fails silently every night.
+
+`python -m app.backup` writes a nightly copy of the database (using SQLite's online backup API, so it's safe even while the app is running) to `backups/` on the office share, or `sync/backups/` locally if the share isn't available. It keeps the most recent 14 daily backups and prunes older ones automatically.
 
 ---
 
@@ -140,17 +145,23 @@ non_isbn_items:
 
 ## Office share mount
 
-Add to `/etc/fstab` for automatic mounting:
+Add to `/etc/fstab` for automatic mounting. Put the credentials in a separate root-owned file rather than inline (fstab is world-readable):
+
+```
+# /etc/colophon/smb-credentials — sudo chmod 600, sudo chown root:root
+username=your-username
+password=your-password
+```
 
 ```
 # Samba / Windows share / NAS
-//server-name/share  /mnt/office  cifs  username=USER,password=PASS,uid=1000,gid=1000  0  0
+//server-name/share  /mnt/office  cifs  credentials=/etc/colophon/smb-credentials,uid=1000,gid=1000,_netdev,nofail,x-systemd.automount  0  0
 
 # NFS
-server-name:/share   /mnt/office  nfs   defaults  0  0
+server-name:/share   /mnt/office  nfs   defaults,_netdev,nofail  0  0
 ```
 
-Then run `sudo mount -a`. If the mount is unavailable, reports fall back to `sync/`.
+`nofail` matters — without it, a down NAS can hang the machine at boot, defeating the `sync/` fallback below. Then run `sudo mount -a`. If the mount is unavailable, reports fall back to `sync/`.
 
 ---
 
@@ -168,17 +179,19 @@ pytest tests/ -v
 ```
 colophon/
 ├── app/
-│   ├── catalog.py     # ISBN lookup, stock management, DB schema
+│   ├── catalog.py     # Barcode lookup, stock management, DB schema
+│   ├── barcode.py     # In-house barcode SVG/label generation
 │   ├── logger.py      # sale recording, void/undo
 │   ├── summary.py     # daily CSV reports, office sync
 │   ├── utils.py       # shared helpers (config, paths, CSV)
 │   └── ui/
-│       ├── counter.py # Counter mode TUI
-│       ├── intake.py  # Intake mode TUI
-│       ├── admin.py   # Admin mode TUI
+│       ├── counter.py  # Counter mode TUI
+│       ├── intake.py   # Intake mode TUI (catalog, stock, deliveries)
+│       ├── payments.py # Payments mode TUI (sundry payments)
+│       ├── admin.py    # Admin mode TUI
 │       ├── launcher.py
-│       ├── widgets.py # Shared Textual widgets
-│       └── quotes.py  # Rotating footer quotes
+│       ├── widgets.py  # Shared Textual widgets
+│       └── quotes.py   # Rotating footer quotes
 ├── barcodes/          # Generated in-house barcode SVGs + print sheet
 ├── config/
 │   ├── settings.example.yaml   # Template — copy to settings.yaml and edit
@@ -188,7 +201,7 @@ colophon/
 ├── sync/              # Local fallback when office mount unavailable
 ├── scripts/
 │   ├── launch.sh
-│   └── gen_barcode.py # In-house barcode generator
+│   └── gen_barcode.py # In-house barcode generator (CLI)
 ├── tests/
 │   └── test_catalog.py
 ├── logs/
