@@ -1,7 +1,7 @@
 #!/bin/bash
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # run_logger.sh - Start the bookshop scanner logger
-# Run from the bookshop_logger/ root directory
+# Run from the colophon/ root directory
 
 cd "$(dirname "$0")/.." || exit 1
 

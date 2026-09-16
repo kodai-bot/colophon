@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """
-utils.py - Shared helper functions for bookshop_logger
+utils.py - Shared helper functions for Colophon
 """
 
 import os
@@ -64,11 +64,18 @@ def get_report_path(config: dict, date_str: str) -> Path:
 
 
 def write_csv(filepath: Path, rows: list[dict], fieldnames: list[str]) -> None:
-    """Write a list of dicts to a CSV file."""
-    with open(filepath, "w", newline="", encoding="utf-8") as f:
+    """
+    Write a list of dicts to a CSV file atomically: write to a temp file in
+    the same directory, then replace the target in one step. Avoids leaving
+    a half-written report if the office share drops mid-write.
+    """
+    filepath = Path(filepath)
+    tmp_path = filepath.with_name(f".{filepath.name}.tmp")
+    with open(tmp_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(rows)
+    os.replace(tmp_path, filepath)
 
 
 def timestamp_now() -> str:
