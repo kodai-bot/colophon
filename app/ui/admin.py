@@ -16,6 +16,7 @@ from textual.binding import Binding
 from textual.screen import Screen, ModalScreen
 from textual import on
 
+import hmac
 from datetime import datetime, timedelta
 from app.utils import load_config, get_logger, format_date, parse_date_str, is_mount_available, timestamp_now
 from app.catalog import get_db
@@ -320,85 +321,11 @@ class PinScreen(Screen):
 
     @on(Input.Submitted, "#pin-input")
     def check_pin(self, event: Input.Submitted) -> None:
-        if event.value == self._correct_pin:
+        if hmac.compare_digest(event.value, self._correct_pin):
             self.dismiss(True)
         else:
             self.query_one("#pin-error").update("⚠  Incorrect PIN")
             self.query_one("#pin-input").value = ""
-
-
-class SalePaymentScreen(ModalScreen):
-    """Payment method selector for manually logging a sale from the catalog."""
-
-    DEFAULT_CSS = """
-    SalePaymentScreen { align: center middle; }
-
-    #sale-dialog {
-        width: 52;
-        height: auto;
-        background: #0f0f2a;
-        border: double #d4af37;
-        padding: 2 3;
-    }
-
-    #sale-book-title {
-        color: #e8dcc8;
-        text-align: center;
-        text-style: bold;
-        margin-bottom: 0;
-    }
-
-    #sale-book-price {
-        color: #d4af37;
-        text-align: center;
-        margin-bottom: 2;
-    }
-
-    .sale-btn {
-        width: 100%;
-        height: 3;
-        margin-bottom: 1;
-        content-align: center middle;
-        text-style: bold;
-    }
-
-    #sale-btn-cash { background: #0a1f0a; border: solid #4aaa7a; color: #4aaa7a; }
-    #sale-btn-cash:hover { background: #0f2f0f; }
-    #sale-btn-card { background: #0a0a1f; border: solid #6a6aaa; color: #6a6aaa; }
-    #sale-btn-card:hover { background: #0f0f2f; }
-
-    #sale-hint { color: #3a3a6a; text-align: center; text-style: italic; margin-top: 1; }
-    """
-
-    BINDINGS = [
-        Binding("c", "cash", "Cash", show=False),
-        Binding("k", "card", "Card", show=False),
-        Binding("escape", "cancel", "Cancel", show=False),
-    ]
-
-    def __init__(self, title: str, price: float | None, **kwargs):
-        super().__init__(**kwargs)
-        self._title = title
-        self._price = price
-
-    def compose(self) -> ComposeResult:
-        price_str = f"€{self._price:.2f}" if self._price else "no price recorded"
-        with Vertical(id="sale-dialog"):
-            yield Static(self._title[:44], id="sale-book-title")
-            yield Static(price_str, id="sale-book-price")
-            yield Button("[C]  Cash", id="sale-btn-cash", classes="sale-btn")
-            yield Button("[K]  Card", id="sale-btn-card", classes="sale-btn")
-            yield Static("Esc to cancel", id="sale-hint")
-
-    def action_cash(self) -> None: self.dismiss("cash")
-    def action_card(self) -> None: self.dismiss("card")
-    def action_cancel(self) -> None: self.dismiss(None)
-
-    @on(Button.Pressed, "#sale-btn-cash")
-    def _cash(self) -> None: self.dismiss("cash")
-
-    @on(Button.Pressed, "#sale-btn-card")
-    def _card(self) -> None: self.dismiss("card")
 
 
 class VoidConfirmScreen(ModalScreen):
