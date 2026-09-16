@@ -22,8 +22,23 @@ def ean13_check_digit(twelve: str) -> str:
     return str((10 - (total % 10)) % 10)
 
 
+def validate_inhouse_prefix(prefix: str) -> None:
+    """
+    Raise ValueError if prefix isn't in the GS1 restricted-circulation range
+    (7 digits, starting with 20-29) used for in-store barcodes that never
+    conflict with real ISBNs/EANs.
+    """
+    if not (prefix.isdigit() and len(prefix) == 7 and 20 <= int(prefix[:2]) <= 29):
+        raise ValueError(
+            f"catalog.inhouse_prefix {prefix!r} in config/settings.yaml is not in the "
+            "GS1 restricted-circulation range — it must be 7 digits starting with "
+            "20-29 (e.g. '2000001')."
+        )
+
+
 def make_inhouse_barcode(item_number: int, prefix: str = INHOUSE_PREFIX) -> str:
     """Return a full 13-digit in-house EAN-13 code for a given item number."""
+    validate_inhouse_prefix(prefix)
     twelve = f"{prefix}{item_number:05d}"
     return twelve + ean13_check_digit(twelve)
 
@@ -61,12 +76,48 @@ def is_valid_barcode(code: str) -> bool:
     return False
 
 
+def normalize_barcode(code: str) -> str | None:
+    """
+    Normalize scanned or typed input to a 13-digit EAN-13 code.
+
+    Handles three real-world cases beyond a plain 13-digit EAN-13:
+    - A 5-digit price add-on some scanners append, sending 18 digits total
+      (13 + 5) — the first 13 are used if they pass the EAN-13 checksum.
+    - ISBN-10 input — converted to ISBN-13 (978 prefix, recomputed check digit).
+    Returns None if nothing here resolves to a valid code.
+    """
+    code = code.strip().replace("-", "").replace(" ", "")
+
+    if len(code) == 18 and code.isdigit():
+        code = code[:13]
+
+    if len(code) == 13 and code.isdigit():
+        total = sum(int(d) * (1 if i % 2 == 0 else 3) for i, d in enumerate(code))
+        return code if total % 10 == 0 else None
+
+    if len(code) == 10 and code[:9].isdigit():
+        last = code[9].upper()
+        if last.isdigit() or last == "X":
+            total = sum(int(d) * (10 - i) for i, d in enumerate(code[:9]))
+            total += 10 if last == "X" else int(last)
+            if total % 11 == 0:
+                twelve = "978" + code[:9]
+                return twelve + ean13_check_digit(twelve)
+
+    return None
+
+
 def get_db(config: dict) -> sqlite3.Connection:
     """Return a connection to the SQLite database, creating tables if needed."""
     db_path = Path(config["database"]["path"])
     db_path.parent.mkdir(exist_ok=True)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
+    # WAL + busy_timeout let the TUI and the nightly cron report process share
+    # the DB without "database is locked" errors.
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")
+    conn.execute("PRAGMA foreign_keys=ON")
     _create_tables(conn)
     return conn
 

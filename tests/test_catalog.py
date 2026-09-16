@@ -7,7 +7,7 @@ import sqlite3
 import pytest
 from app.catalog import (
     get_item, add_item, decrement_stock, _create_tables,
-    is_valid_barcode, resolve_barcode,
+    is_valid_barcode, resolve_barcode, normalize_barcode, validate_inhouse_prefix,
 )
 
 
@@ -105,6 +105,38 @@ def test_resolve_barcode_lookup_disabled(in_memory_db):
 
     result = resolve_barcode("9780571331475", in_memory_db, config, _Logger())
     assert result is None
+
+
+def test_normalize_barcode_plain_ean13():
+    assert normalize_barcode("9780571331475") == "9780571331475"
+
+
+def test_normalize_barcode_strips_ean5_price_addon():
+    """Some scanners send the 5-digit price add-on appended, as 18 digits total."""
+    assert normalize_barcode("978057133147512345") == "9780571331475"
+
+
+def test_normalize_barcode_rejects_bad_ean5_host():
+    """If the first 13 digits don't check out, the whole scan is rejected."""
+    assert normalize_barcode("978057133147612345") is None
+
+
+def test_normalize_barcode_converts_isbn10_to_isbn13():
+    assert normalize_barcode("0261102214") == "9780261102217"
+
+
+def test_normalize_barcode_garbage_returns_none():
+    assert normalize_barcode("not-a-barcode") is None
+
+
+def test_validate_inhouse_prefix_accepts_gs1_range():
+    validate_inhouse_prefix("2000001")  # should not raise
+    validate_inhouse_prefix("2999999")  # should not raise
+
+
+def test_validate_inhouse_prefix_rejects_outside_gs1_range():
+    with pytest.raises(ValueError):
+        validate_inhouse_prefix("9990001")
 
 
 def test_resolve_barcode_returns_cached_item(in_memory_db, sample_item):
