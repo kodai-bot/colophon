@@ -2,7 +2,7 @@
 """
 launcher.py - Mode selector.
 
-One entry point. Three modes. That's it.
+One entry point. Four modes. That's it.
 
 "A rebellion is built on hope." — Jyn Erso
 """
@@ -68,7 +68,15 @@ Screen { align: center middle; }
     padding-top: 1;
     border-top: solid #1a1a3a;
 }
+
+#pin-warning {
+    color: #ff6b6b;
+    text-align: center;
+    margin-bottom: 1;
+}
 """
+
+DEFAULT_EXAMPLE_PIN = "0000"
 
 
 class LauncherApp(App):
@@ -99,6 +107,11 @@ class LauncherApp(App):
                 id="title",
             )
             yield Static("Select mode (click or press 1 / 2 / 3 / 4):", id="subtitle")
+            if str(config.get("admin", {}).get("pin", "")) == DEFAULT_EXAMPLE_PIN:
+                yield Static(
+                    "⚠  Admin PIN is still the example default — change it in config/settings.yaml",
+                    id="pin-warning",
+                )
             yield Button(
                 f" [1]  Counter Mode  —  Scan {item_plural} for sale",
                 id="mode-counter",
