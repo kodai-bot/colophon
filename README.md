@@ -213,3 +213,15 @@ colophon/
 ## License
 
 AGPL-3.0. See [LICENSE](LICENSE). In short: use it, modify it, install and charge for it as a service — but if you distribute a modified copy (including running a hosted version of it for others), you must make your source available under the same license.
+
+---
+
+## Related projects
+
+All three systems run on the same hardware stack (Xubuntu, Netum scanner, Python + Textual + SQLite) and share the same design language.
+
+| Repo | Purpose | Status |
+|------|---------|--------|
+| **Colophon** (this repo) | Bookshop counter, stock, and sales | Public — most advanced |
+| [Artyfact](https://github.com/kodai-bot/artyfact) | Gallery artwork sales, payments, bookshop | Private — testing |
+| [Papyrus](https://github.com/kodai-bot/papyrus) | Library catalogue with barcode scanning | Private — testing |
