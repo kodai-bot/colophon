@@ -165,6 +165,40 @@ server-name:/share   /mnt/office  nfs   defaults,_netdev,nofail  0  0
 
 ---
 
+## Receipt printer (optional)
+
+Colophon can print a receipt on Counter mode's Subtotal/Pay, using any ESC/POS thermal printer (tested with an Epson TM-T20II over USB) via a local CUPS queue. It's off by default and never blocks a sale if printing fails.
+
+One-time setup on the till machine — create a raw CUPS queue pointed at the printer:
+
+```bash
+lpinfo -v                          # find the printer's usb:// URI
+lpadmin -p colophon_receipt -v "<usb:// URI from lpinfo -v>" -m raw -E
+cupsenable colophon_receipt
+cupsaccept colophon_receipt
+```
+
+This needs the OS user running Colophon to be in the `lpadmin` group (`groups` to check; `sudo usermod -aG lpadmin <user>` then log out/in if not).
+
+Then enable it in `config/settings.yaml`:
+
+```yaml
+printer:
+  enabled: true
+  queue_name: "colophon_receipt"     # must match the queue name above
+  paper_width_chars: 42              # 80mm paper; use 32 for 58mm paper
+  cut_mode: "partial"                # "partial" or "full"
+  footer_line: "Thank you for your visit"
+```
+
+Verify the queue directly before trusting the app to use it:
+
+```bash
+printf '\x1b\x40Test\n\n\n\x1d\x56\x01' | lp -d colophon_receipt -o raw
+```
+
+---
+
 ## Tests
 
 ```bash
