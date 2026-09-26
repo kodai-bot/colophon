@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.3.0 — 2026-09-26
+
+- Added optional receipt printing on Counter mode's Subtotal/Pay: `app/printing.py`
+  builds an ESC/POS receipt (itemised, with the till's Discount rows shown
+  correctly as negative amounts) and sends it to a CUPS queue via `lp`. Off by
+  default (`printer.enabled: false`); a failed or missing printer never blocks
+  or delays a sale — it's logged as a warning and the till carries on exactly
+  as before. No new dependency: built with stdlib `subprocess` and Python's
+  `cp858` codec for the € sign, not `python-escpos`. See README.md "Receipt
+  printer (optional)" for the one-time CUPS queue setup. Tested against a
+  physical Epson TM-T20II.
+
 ## v1.2.1 — 2026-09-16
 
 - Added `AGENTS.md`: instructions for AI agents installing, verifying, or

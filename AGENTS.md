@@ -164,6 +164,7 @@ app/logger.py         sale recording, void, undo
 app/summary.py        daily CSV reports, office share / sync fallback
 app/backup.py         online database backup with retention
 app/barcode.py        in-house EAN-13 handling
+app/printing.py       ESC/POS receipt formatting and printing via CUPS (optional, config-gated)
 app/utils.py          config, paths, atomic CSV writes
 app/ui/               launcher, counter, intake, payments, admin, shared widgets
 scripts/launch.sh     entry point for staff

@@ -65,3 +65,10 @@ payment_types:
 payments:
  location_tag: "COUNTER"
  require_reference: false
+
+printer:
+  enabled: false                     # set true only on machines with the receipt printer's CUPS queue set up
+  queue_name: "colophon_receipt"     # CUPS queue name — see README.md "Receipt printer (optional)"
+  paper_width_chars: 42              # 80mm paper, 42 columns — use 32 for 58mm paper
+  cut_mode: "partial"                # "partial" or "full"
+  footer_line: "Thank you for your visit"

@@ -21,6 +21,7 @@ import time
 from app.utils import load_config, get_logger
 from app.catalog import get_db, resolve_barcode, decrement_stock, normalize_barcode, get_inhouse_prefix
 from app.logger import record_sale, void_last_sale
+from app.printing import format_receipt, print_receipt
 from app.ui.widgets import (
     HeaderBar, ScanDisplay, DailyManifest,
     NonIsbnPanel, FooterBar, StockAlert,
@@ -566,6 +567,16 @@ class CounterApp(App):
                     f"Payment: {method}  txn={txn_id}  "
                     f"{basket_items} items  €{basket_total:.2f}"
                 )
+
+                rows = self.conn.execute(
+                    "SELECT title, price, quantity FROM sales "
+                    "WHERE transaction_id = ? AND voided = 0",
+                    (txn_id,),
+                ).fetchall()
+                items = [(r["title"], r["price"] or 0.0, r["quantity"] or 1) for r in rows]
+                receipt = format_receipt(items, basket_total, method, txn_id, self.config)
+                print_receipt(receipt, self.config, self.logger)
+
                 if method == "cash":
                     self._daily_cash += basket_total
                 elif method == "card":
