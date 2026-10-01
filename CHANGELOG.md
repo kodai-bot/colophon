@@ -1,5 +1,22 @@
 # Changelog
 
+## v1.4.0 — 2026-10-01
+
+- Added an optional read-only sales/stock dashboard, viewable from other
+  devices on the shop's local network: `app/dashboard.py` serves today's
+  running total with cash/card split, an item-level sales tally, and the
+  low-stock list, plus a historical date-range view — all built on
+  `app/summary.py`'s existing read-only queries (`get_sales_tally`,
+  `get_sales_summary`, `get_low_stock`), no new SQL. Off by default
+  (`dashboard.enabled: false`); runs as its own process
+  (`scripts/dashboard.sh` / `python -m app.dashboard`), separate from the
+  till app, and never writes to the database. Uses Flask + Jinja2 — a
+  deliberate, scoped exception to "keep the stack," documented in
+  AGENTS.md §6. **No authentication**: anyone on the shop's Wi-Fi who can
+  reach the till machine's IP can view it; see README.md "Sales dashboard
+  (optional)" for the LAN-only warning — never port-forward this. New
+  dependency: `flask>=3.0` (bundles Jinja2).
+
 ## v1.3.0 — 2026-09-26
 
 - Added optional receipt printing on Counter mode's Subtotal/Pay: `app/printing.py`

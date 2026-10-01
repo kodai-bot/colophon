@@ -1,0 +1,94 @@
+{% extends "dashboard/base.html" %}
+{% block content %}
+
+{% if error %}
+<div class="error">{{ error }}</div>
+{% endif %}
+
+<div class="panel">
+  <h2>Summary</h2>
+  <div class="stats">
+    <div class="stat">
+      <div class="value">€{{ "%.2f"|format(summary.total_revenue) }}</div>
+      <div class="label">Total revenue</div>
+    </div>
+    <div class="stat">
+      <div class="value">€{{ "%.2f"|format(summary.cash_revenue) }}</div>
+      <div class="label">Cash</div>
+    </div>
+    <div class="stat">
+      <div class="value">€{{ "%.2f"|format(summary.card_revenue) }}</div>
+      <div class="label">Card</div>
+    </div>
+    <div class="stat">
+      <div class="value">{{ summary.total_items_sold }}</div>
+      <div class="label">Items sold</div>
+    </div>
+    {% if summary.total_transactions is not none %}
+    <div class="stat">
+      <div class="value">{{ summary.total_transactions }}</div>
+      <div class="label">Sales logged</div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Items sold</h2>
+  {% if tally %}
+  <table>
+    <tr>
+      <th>Type</th><th>Title</th><th class="right">Qty</th>
+      <th class="right">Revenue</th><th class="right">Cash</th><th class="right">Card</th>
+    </tr>
+    {% for row in tally %}
+    <tr>
+      <td>{{ row.item_type }}</td>
+      <td>{{ row.title }}</td>
+      <td class="right">{{ row.qty }}</td>
+      <td class="right">€{{ "%.2f"|format(row.revenue) }}</td>
+      <td class="right">€{{ "%.2f"|format(row.cash) }}</td>
+      <td class="right">€{{ "%.2f"|format(row.card) }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>No sales in this range.</p>
+  {% endif %}
+</div>
+
+<div class="panel">
+  <h2>Low stock</h2>
+  {% if low_stock %}
+  <table>
+    <tr><th>Title</th><th>Author</th><th class="right">Stock</th></tr>
+    {% for item in low_stock %}
+    <tr>
+      <td>{{ item.title }}</td>
+      <td>{{ item.author }}</td>
+      <td class="right low">{{ item.stock }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p>Nothing low on stock.</p>
+  {% endif %}
+</div>
+
+<div class="panel">
+  <h2>View a date range</h2>
+  <form class="range" method="get" action="/">
+    <div>
+      <label for="start">From</label>
+      <input type="date" id="start" name="start" value="{{ start }}">
+    </div>
+    <div>
+      <label for="end">To</label>
+      <input type="date" id="end" name="end" value="{{ end }}">
+    </div>
+    <button type="submit">View</button>
+    {% if not is_default %}<a class="btn" href="/">Today</a>{% endif %}
+  </form>
+</div>
+
+{% endblock %}
