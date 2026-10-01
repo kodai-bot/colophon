@@ -72,3 +72,8 @@ printer:
   paper_width_chars: 42              # 80mm paper, 42 columns — use 32 for 58mm paper
   cut_mode: "partial"                # "partial" or "full"
   footer_line: "Thank you for your visit"
+
+dashboard:
+  enabled: false                     # set true to serve the read-only sales/stock dashboard
+  port: 8088                         # LAN only — never port-forward this; see README.md "Sales dashboard (optional)"
+  refresh_seconds: 30                # how often the page auto-refreshes (<meta http-equiv="refresh">)
