@@ -132,6 +132,8 @@ Leave the database clean: void any test sales, or do the test run before the sho
 - **Keep CSV reports stable.** Filenames and column order don't change. New columns may only be appended at the end.
 - **Offline first.** Add no new network dependencies and no cloud services. Open Library lookup is the only online call, and it must stay optional.
 - **Keep the stack**: Python, stdlib `sqlite3`, Textual. No ORM.
+- **One deliberate exception to "keep the stack": `app/dashboard.py`.** The read-only LAN sales/stock dashboard (added v1.4.0, approved by the Director 2026-10-01) uses Flask + Jinja2 instead of stdlib/Textual. Scoped narrowly — additive only, no mutating routes, confined to `app/dashboard.py` and `app/templates/dashboard/`. Not license to add other web frameworks elsewhere; don't quietly "fix" it back to stdlib without asking the Director first.
+- **The dashboard has no authentication.** Read-only, but open to anyone who can reach the till machine's IP on the shop's local network. Never port-forward its port or expose it beyond the LAN.
 - **Never commit** `config/settings.yaml`, `db/`, `sync/`, `logs/`, or generated barcode sheets. Generated files can contain live catalog data; this happened once and was cleaned up in v1.1.0.
 - **Keep the SPDX licence headers** (AGPL-3.0) on source files.
 
@@ -165,9 +167,12 @@ app/summary.py        daily CSV reports, office share / sync fallback
 app/backup.py         online database backup with retention
 app/barcode.py        in-house EAN-13 handling
 app/printing.py       ESC/POS receipt formatting and printing via CUPS (optional, config-gated)
+app/dashboard.py      read-only LAN sales/stock dashboard (Flask, config-gated, no auth — LAN only)
+app/templates/dashboard/  Jinja2 templates for the dashboard (server-rendered, autoescaped, no JS)
 app/utils.py          config, paths, atomic CSV writes
 app/ui/               launcher, counter, intake, payments, admin, shared widgets
 scripts/launch.sh     entry point for staff
+scripts/dashboard.sh  entry point for the dashboard (python -m app.dashboard)
 scripts/gen_barcode.py  register in-house items, print barcode sheets
 config/settings.example.yaml  template; the real settings.yaml is never committed
 ```

@@ -199,6 +199,31 @@ printf '\x1b\x40Test\n\n\n\x1d\x56\x01' | lp -d colophon_receipt -o raw
 
 ---
 
+## Sales dashboard (optional)
+
+A read-only web dashboard, viewable from other devices on the shop's local network (a staff phone, the office PC) — today's running total with a cash/card split, an item-level sales tally, the low-stock list, and a historical date-range view. It's off by default and runs as its **own process**, separate from the till app.
+
+**No login.** Anyone who can reach the till machine's IP on the shop's local network can view it. It's read-only (no sale, void, or stock data can be changed from it), but there is no authentication — **never port-forward its port or otherwise expose it beyond the LAN.**
+
+Enable it in `config/settings.yaml`:
+
+```yaml
+dashboard:
+  enabled: true
+  port: 8088                # never port-forward this
+  refresh_seconds: 30       # how often the page auto-refreshes
+```
+
+Then start it separately from the till:
+
+```bash
+./scripts/dashboard.sh
+```
+
+Open `http://<till-machine-LAN-IP>:8088/` from any device on the same network.
+
+---
+
 ## Tests
 
 ```bash
@@ -218,6 +243,9 @@ colophon/
 │   ├── logger.py      # sale recording, void/undo
 │   ├── summary.py     # daily CSV reports, office sync
 │   ├── utils.py       # shared helpers (config, paths, CSV)
+│   ├── dashboard.py   # Read-only LAN sales/stock dashboard (Flask, optional)
+│   ├── templates/
+│   │   └── dashboard/  # Jinja2 templates for the dashboard
 │   └── ui/
 │       ├── counter.py  # Counter mode TUI
 │       ├── intake.py   # Intake mode TUI (catalog, stock, deliveries)
@@ -235,9 +263,11 @@ colophon/
 ├── sync/              # Local fallback when office mount unavailable
 ├── scripts/
 │   ├── launch.sh
+│   ├── dashboard.sh   # Start the dashboard (python -m app.dashboard)
 │   └── gen_barcode.py # In-house barcode generator (CLI)
 ├── tests/
-│   └── test_catalog.py
+│   ├── test_catalog.py
+│   └── test_dashboard.py
 ├── logs/
 └── USER_GUIDE.md      # Full staff and admin documentation
 ```
