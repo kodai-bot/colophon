@@ -110,6 +110,13 @@ crontab -e
 5 23 * * * cd /path/to/colophon && .venv/bin/python -m app.backup  >> logs/backup_cron.log 2>&1
 ```
 
+If the till machine is switched off in the evening, 23:00 jobs never run. Back up at boot and in the afternoon instead (the backup is safe while the app is open):
+
+```
+@reboot sleep 120; cd /path/to/colophon && .venv/bin/python -m app.backup >> logs/backup_cron.log 2>&1
+0 16 * * * cd /path/to/colophon && .venv/bin/python -m app.backup >> logs/backup_cron.log 2>&1
+```
+
 The `>> logs/*.log 2>&1` matters — cron discards output by default, so without it a failure fails silently every night.
 
 `python -m app.backup` writes a nightly copy of the database (using SQLite's online backup API, so it's safe even while the app is running) to `backups/` on the office share, or `sync/backups/` locally if the share isn't available. It keeps the most recent 14 daily backups and prunes older ones automatically.

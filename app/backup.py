@@ -7,8 +7,11 @@ not, and can produce a corrupt backup mid-write). Keeps a rolling window of
 recent daily backups rather than growing forever.
 """
 
+import os
+import shutil
 import sqlite3
 import sys
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
@@ -34,15 +37,28 @@ def run_backup(config: dict, logger) -> Path:
     src_path = Path(config["database"]["path"])
     dest_path = backup_dir(config) / f"bookshop_{datetime.now().strftime('%Y-%m-%d')}.db"
 
-    src = sqlite3.connect(src_path)
+    # Build the backup in a local temp file, then copy the finished file into
+    # place. SQLite can't get file locks on the office CIFS share, so backing
+    # up straight onto it retried forever and never finished.
+    fd, tmp_name = tempfile.mkstemp(suffix=".db", dir=src_path.parent)
+    os.close(fd)
+    tmp_path = Path(tmp_name)
+    part_path = dest_path.with_name(dest_path.name + ".part")
     try:
-        dest = sqlite3.connect(dest_path)
+        src = sqlite3.connect(src_path)
         try:
-            src.backup(dest)
+            dest = sqlite3.connect(tmp_path)
+            try:
+                src.backup(dest)
+            finally:
+                dest.close()
         finally:
-            dest.close()
+            src.close()
+        shutil.copyfile(tmp_path, part_path)
+        os.replace(part_path, dest_path)
     finally:
-        src.close()
+        tmp_path.unlink(missing_ok=True)
+        part_path.unlink(missing_ok=True)
 
     logger.info(f"Backup written to {dest_path}")
     _prune_old_backups(dest_path.parent, logger)

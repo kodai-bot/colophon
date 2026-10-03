@@ -56,3 +56,11 @@ def test_prune_keeps_only_recent_backups(tmp_path):
     remaining = sorted(directory.glob("bookshop_*.db"))
     assert len(remaining) == 14
     assert remaining[-1].name == "bookshop_2026-01-20.db"
+
+
+def test_backup_leaves_no_temp_or_part_files(tmp_path):
+    config, db_path = _make_config(tmp_path)
+    backup_path = run_backup(config, _NullLogger())
+
+    assert list(backup_path.parent.glob("*.part")) == []
+    assert sorted(p.name for p in db_path.parent.glob("*.db")) == ["bookshop.db"]

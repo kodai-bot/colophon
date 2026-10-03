@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.5.1 — 2026-10-03
+
+- Fixed database backups to the office share never finishing. SQLite can't
+  get file locks on the CIFS share, so `app.backup` retried forever and left
+  an empty file behind. Only one backup had ever been made (during setup on
+  2026-09-16). The backup is now built in a local temp file and the finished
+  copy is moved onto the share. Also: the shop laptop is switched off by
+  about 6pm, so the 23:00 cron jobs never ran. Backups now run at boot and
+  at 16:00 instead (see README).
+
 ## v1.5.0 — 2026-10-03
 
 - Added cash drawer support. The shop now has a cash drawer attached to the
