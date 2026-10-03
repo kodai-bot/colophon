@@ -74,6 +74,10 @@ Scanned the wrong book? Press **Ctrl+Z** immediately. This removes the last item
 
 Undo only works for sales made today. All timestamps and "today" boundaries throughout Colophon use the machine's local time, not UTC — set your system timezone correctly and this handles daylight saving automatically.
 
+### No sale (opening the drawer)
+
+Press **Ctrl+N**, or click **No sale**, to open the cash drawer without a sale, for example to give change. It only works when no sale is in progress; finish or pay the current sale first. Each no-sale is recorded in that day's log in `logs/`. If the screen says the drawer didn't open, the printer is off or disconnected: use the drawer key.
+
 ### Applying a discount
 
 Press **Ctrl+D** to open the discount box. A discount is applied to the whole basket as a fixed euro amount (not a percentage), capped at the basket total — it isn't per item. It's recorded as its own "Discount" line with a negative price, tied to the same transaction, so it appears in `sales_*.csv` and is already reflected in the totals in `summary_*.csv`.
@@ -345,6 +349,7 @@ Every mode shows its own active keys at the bottom of the screen — this table 
 | **Esc** | Skip / cancel the payment popup, or go back to the launcher |
 | **Ctrl+Z** | Undo last item |
 | **Ctrl+D** | Apply a discount |
+| **Ctrl+N** | No sale: open the cash drawer |
 | **Ctrl+Q** | Quit the whole program (from any mode) |
 
 ### Intake mode

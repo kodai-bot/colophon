@@ -99,6 +99,23 @@ def print_receipt(receipt_bytes: bytes, config: dict, logger) -> bool:
     Send receipt_bytes to the configured CUPS queue via `lp -d <queue> -o raw`.
     Returns True on success, False on any failure. Never raises.
     """
+    return _send_raw(receipt_bytes, config, logger, "Receipt")
+
+
+def open_drawer(config: dict, logger) -> bool:
+    """
+    Open the cash drawer on its own, with no receipt (Counter mode's No sale).
+    Returns False without sending anything if the drawer isn't enabled.
+    """
+    printer_cfg = config.get("printer", {})
+    if not printer_cfg.get("cash_drawer", False):
+        return False
+    kick = DRAWER_KICK.get(printer_cfg.get("drawer_pin", 2), DRAWER_KICK[2])
+    return _send_raw(INIT + kick, config, logger, "Drawer kick")
+
+
+def _send_raw(data: bytes, config: dict, logger, what: str) -> bool:
+    """Send raw ESC/POS bytes to the CUPS queue. Never raises."""
     printer_cfg = config.get("printer", {})
     if not printer_cfg.get("enabled", False):
         return False
@@ -108,26 +125,26 @@ def print_receipt(receipt_bytes: bytes, config: dict, logger) -> bool:
     try:
         result = subprocess.run(
             ["lp", "-d", queue, "-o", "raw"],
-            input=receipt_bytes,
+            input=data,
             capture_output=True,
             timeout=10,
         )
     except FileNotFoundError:
-        logger.warning("Receipt print failed: 'lp' command not found (is CUPS installed?)")
+        logger.warning(f"{what} failed: 'lp' command not found (is CUPS installed?)")
         return False
     except subprocess.TimeoutExpired:
-        logger.warning("Receipt print failed: 'lp' command timed out")
+        logger.warning(f"{what} failed: 'lp' command timed out")
         return False
     except Exception as e:
-        logger.warning(f"Receipt print failed: {e}")
+        logger.warning(f"{what} failed: {e}")
         return False
 
     if result.returncode != 0:
         logger.warning(
-            f"Receipt print failed (lp exit {result.returncode}): "
+            f"{what} failed (lp exit {result.returncode}): "
             f"{result.stderr.decode(errors='replace').strip()}"
         )
         return False
 
-    logger.info(f"Receipt sent to queue '{queue}'")
+    logger.info(f"{what} sent to queue '{queue}'")
     return True

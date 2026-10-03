@@ -21,7 +21,7 @@ import time
 from app.utils import load_config, get_logger
 from app.catalog import get_db, resolve_barcode, decrement_stock, normalize_barcode, get_inhouse_prefix
 from app.logger import record_sale, void_last_sale
-from app.printing import format_receipt, print_receipt
+from app.printing import format_receipt, print_receipt, open_drawer
 from app.ui.widgets import (
     HeaderBar, ScanDisplay, DailyManifest,
     NonIsbnPanel, FooterBar, StockAlert,
@@ -115,6 +115,20 @@ DailyManifest {
 
 #discount-btn:hover { background: #2f200f; }
 #discount-btn:focus { border: solid #d4af37; color: #d4af37; }
+
+#no-sale-btn {
+    width: auto;
+    min-width: 20;
+    height: 3;
+    background: #0f0f1a;
+    border: solid #4a4a7a;
+    color: #8a8aba;
+    margin: 0;
+    content-align: center middle;
+}
+
+#no-sale-btn:hover { background: #1a1a2f; }
+#no-sale-btn:focus { border: solid #d4af37; color: #d4af37; }
 """
 
 
@@ -288,6 +302,7 @@ class CounterApp(App):
         Binding("ctrl+z", "undo_sale", "Undo last", show=True),
         Binding("ctrl+t", "pay", "Subtotal / Pay", show=True),
         Binding("ctrl+d", "discount", "Discount", show=True),
+        Binding("ctrl+n", "no_sale", "No sale", show=True),
         Binding("1", "select_item('1')", "Item 1", show=True),
         Binding("2", "select_item('2')", "Item 2", show=True),
         Binding("3", "select_item('3')", "Item 3", show=True),
@@ -358,6 +373,7 @@ class CounterApp(App):
         with Horizontal(id="action-row"):
             yield Button("  ✦  Subtotal / Pay  [Ctrl+T]", id="pay-btn", classes="-empty")
             yield Button("  −  Discount  [Ctrl+D]", id="discount-btn")
+            yield Button("  ⏏  No sale  [Ctrl+N]", id="no-sale-btn")
 
         yield StockAlert(id="stock-alert")
         yield HintBar(id="hint-bar")
@@ -641,6 +657,24 @@ class CounterApp(App):
         self._update_basket_display()
         self.query_one(FooterBar).refresh_quote()
         self.logger.info(f"Discount applied: {price_str}  txn={self._txn_id}")
+
+    # ── No sale ───────────────────────────────────────────────
+
+    @on(Button.Pressed, "#no-sale-btn")
+    def _click_no_sale(self) -> None:
+        self.action_no_sale()
+
+    def action_no_sale(self) -> None:
+        """Open the cash drawer without a sale, e.g. to give change."""
+        scan = self.query_one(ScanDisplay)
+        if self._txn_id and self._basket_items:
+            scan.show_notice("Finish the current sale first", "Subtotal / Pay  [Ctrl+T]", ok=False)
+        elif open_drawer(self.config, self.logger):
+            self.logger.info("No sale: cash drawer opened")
+            scan.show_notice("Drawer open", "No sale", ok=True)
+        else:
+            scan.show_notice("Drawer didn't open", "Use the drawer key", ok=False)
+        self.query_one("#scan-input").focus()
 
     # ── Undo ──────────────────────────────────────────────────
 

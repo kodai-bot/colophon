@@ -162,6 +162,13 @@ class ScanDisplay(Static):
         self.status = "✦ SALE COMPLETE"
         self.status_class = "status-ok"
 
+    def show_notice(self, title: str, detail: str, ok: bool = True) -> None:
+        self.title = title
+        self.author = detail
+        self.price = ""
+        self.status = "✦ NO SALE" if ok else "⚠  NO SALE"
+        self.status_class = "status-ok" if ok else "status-warn"
+
     def show_item(self, name: str, value: str) -> None:
         self.title = name
         self.author = ""
