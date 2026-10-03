@@ -10,7 +10,7 @@ import subprocess
 import pytest
 from app.printing import (
     format_currency, format_line_item, format_receipt, print_receipt,
-    INIT, SELECT_CODEPAGE_PC858, CUT_COMMANDS, CODEPAGE, DRAWER_KICK,
+    INIT, SELECT_CODEPAGE_PC858, CUT_COMMANDS, CODEPAGE, DRAWER_KICK, open_drawer,
 )
 
 
@@ -219,3 +219,26 @@ def test_drawer_pin_5(config):
     config["printer"]["drawer_pin"] = 5
     out = format_receipt([("Book", 5.0, 1)], 5.0, "cash", "T1", config)
     assert out.startswith(INIT + DRAWER_KICK[5])
+
+
+# ── open_drawer (No sale) ──────────────────────────────────────
+
+def test_open_drawer_sends_kick_only(config, monkeypatch):
+    config["printer"]["cash_drawer"] = True
+    sent = {}
+
+    def fake_run(cmd, input, **kwargs):
+        sent["data"] = input
+        return subprocess.CompletedProcess(cmd, 0, b"", b"")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    assert open_drawer(config, StubLogger()) is True
+    assert sent["data"] == INIT + DRAWER_KICK[2]
+
+
+def test_open_drawer_does_nothing_when_disabled(config, monkeypatch):
+    def fail_run(*a, **k):
+        raise AssertionError("lp should not be called")
+
+    monkeypatch.setattr(subprocess, "run", fail_run)
+    assert open_drawer(config, StubLogger()) is False

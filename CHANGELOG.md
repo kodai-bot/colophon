@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.6.0 — 2026-10-03
+
+- Added a **No sale** key to Counter mode (Ctrl+N, or the No sale button)
+  that opens the cash drawer without a sale, e.g. to give change. It is
+  refused while a sale is in progress, and each no-sale is written to the
+  day's log as "No sale: cash drawer opened". Needs `printer.cash_drawer:
+  true`. If the printer is down, staff are told to use the drawer key.
+
 ## v1.5.1 — 2026-10-03
 
 - Fixed database backups to the office share never finishing. SQLite can't
