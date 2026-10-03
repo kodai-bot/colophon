@@ -21,6 +21,12 @@ CUT_COMMANDS = {
     "partial": b"\x1d\x56\x01",
     "full": b"\x1d\x56\x00",
 }
+# ESC p m t1 t2: pulse the cash drawer connector. m selects the pin
+# (0 = pin 2, 1 = pin 5); t1/t2 are on/off times in 2ms units (50ms/500ms).
+DRAWER_KICK = {
+    2: b"\x1b\x70\x00\x19\xfa",
+    5: b"\x1b\x70\x01\x19\xfa",
+}
 
 
 def format_currency(amount: float) -> str:
@@ -60,6 +66,8 @@ def format_receipt(
     cut_mode = printer_cfg.get("cut_mode", "partial")
     footer = printer_cfg.get("footer_line", "")
     shop_name = config.get("shop", {}).get("name", "Shop")
+    kick_drawer = payment_method == "cash" and printer_cfg.get("cash_drawer", False)
+    drawer_pin = printer_cfg.get("drawer_pin", 2)
 
     body_lines = [datetime.now().strftime("%a %d %b %Y  %H:%M"), ""]
     for title, price, quantity in items:
@@ -73,6 +81,9 @@ def format_receipt(
 
     out = bytearray()
     out += INIT
+    if kick_drawer:
+        # Sent first so the drawer opens while the receipt is still printing.
+        out += DRAWER_KICK.get(drawer_pin, DRAWER_KICK[2])
     out += SELECT_CODEPAGE_PC858
     out += ALIGN_CENTER + BOLD_ON
     out += (shop_name.upper() + "\n").encode(CODEPAGE, errors="replace")

@@ -10,7 +10,7 @@ import subprocess
 import pytest
 from app.printing import (
     format_currency, format_line_item, format_receipt, print_receipt,
-    INIT, SELECT_CODEPAGE_PC858, CUT_COMMANDS, CODEPAGE,
+    INIT, SELECT_CODEPAGE_PC858, CUT_COMMANDS, CODEPAGE, DRAWER_KICK,
 )
 
 
@@ -193,3 +193,29 @@ def test_print_receipt_timeout(config, monkeypatch):
 
     assert result is False
     assert len(logger.warnings) == 1
+
+
+# ── cash drawer kick ────────────────────────────────────────────
+
+def test_cash_payment_kicks_drawer_when_enabled(config):
+    config["printer"]["cash_drawer"] = True
+    out = format_receipt([("Book", 5.0, 1)], 5.0, "cash", "T1", config)
+    assert out.startswith(INIT + DRAWER_KICK[2])
+
+
+def test_card_payment_never_kicks_drawer(config):
+    config["printer"]["cash_drawer"] = True
+    out = format_receipt([("Book", 5.0, 1)], 5.0, "card", "T1", config)
+    assert not any(k in out for k in DRAWER_KICK.values())
+
+
+def test_drawer_off_by_default(config):
+    out = format_receipt([("Book", 5.0, 1)], 5.0, "cash", "T1", config)
+    assert not any(k in out for k in DRAWER_KICK.values())
+
+
+def test_drawer_pin_5(config):
+    config["printer"]["cash_drawer"] = True
+    config["printer"]["drawer_pin"] = 5
+    out = format_receipt([("Book", 5.0, 1)], 5.0, "cash", "T1", config)
+    assert out.startswith(INIT + DRAWER_KICK[5])
