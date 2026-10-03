@@ -72,6 +72,8 @@ printer:
   paper_width_chars: 42              # 80mm paper, 42 columns — use 32 for 58mm paper
   cut_mode: "partial"                # "partial" or "full"
   footer_line: "Thank you for your visit"
+  cash_drawer: false                 # true if a cash drawer is plugged into the printer's DK port; opens on Cash
+  drawer_pin: 2                      # 2 for most drawers; try 5 if it doesn't open
 
 dashboard:
   enabled: false                     # set true to serve the read-only sales/stock dashboard

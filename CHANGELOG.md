@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.5.0 — 2026-10-03
+
+- Added cash drawer support. The shop now has a cash drawer attached to the
+  Epson receipt printer. When staff choose **Cash** after Subtotal/Pay, the
+  drawer opens as the receipt prints. Card payments never open it. Off by
+  default (`printer.cash_drawer: false`). The pin is configurable
+  (`drawer_pin: 2` or `5`). The kick is sent in the same print job as the
+  receipt, so it adds no new failure modes: if the printer is down, the sale
+  still completes and the drawer opens by key as before.
+
 ## v1.4.0 — 2026-10-01
 
 - Added an optional read-only sales/stock dashboard, viewable from other

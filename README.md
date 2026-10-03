@@ -197,6 +197,22 @@ Verify the queue directly before trusting the app to use it:
 printf '\x1b\x40Test\n\n\n\x1d\x56\x01' | lp -d colophon_receipt -o raw
 ```
 
+### Cash drawer (optional)
+
+A cash drawer plugged into the printer's DK (drawer kick) port opens when the operator chooses **Cash** after Subtotal/Pay. Card payments never open it. The kick goes out with the receipt, so it needs `printer.enabled: true`. If the printer is down, the drawer won't open; use the drawer key.
+
+```yaml
+printer:
+  cash_drawer: true
+  drawer_pin: 2        # most drawers; try 5 if it doesn't open
+```
+
+Test it without a sale:
+
+```bash
+printf '\x1b\x70\x00\x19\xfa' | lp -d colophon_receipt -o raw
+```
+
 ---
 
 ## Sales dashboard (optional)
