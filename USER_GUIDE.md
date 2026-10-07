@@ -96,6 +96,16 @@ Intake mode is the working home for the catalog: browsing it, receiving deliveri
 
 The main screen shows the full catalog in a table. Type part of a title into the search box and press **Enter** to filter it — or scan a barcode to jump straight to that item.
 
+### Categories (Books, Cards, Prints…)
+
+Every item belongs to a category. The row of tabs above the table — **All · Books · Cards · Prints · … · Unsorted** — shows one category at a time. Click a tab, or press **[** and **]** while the table is selected to step through them. The search box filters within the tab you're on. On the **All** tab the table has an extra Category column.
+
+**Unsorted** holds items that haven't been given a category yet. When categories were introduced, books with real barcodes went into Books automatically, and in-house items with "card" or "print" in their title went into Cards or Prints. Everything else starts in Unsorted.
+
+**Moving items to another category:** highlight an item (or mark several with **M**) and press **C**. Pick the category and press **Enter**. This is the quickest way to tidy up the Unsorted tab: mark everything that belongs together, then press **C** once.
+
+**Creating a new category:** in the **C** picker, or in the Add form's category list, choose **＋ New category…** and type a name (plural, e.g. "Calendars"). It appears as a new tab straight away. Renaming, reordering and deleting categories is in Admin → **[5] Categories**.
+
 ### Scanning a delivery
 
 1. Scan the barcode on the item.
@@ -118,8 +128,8 @@ Use stock correction after a stocktake, or if an item has been misplaced.
 
 For items without a barcode (local publications, old books, self-published items, or anything the online lookup can't find):
 
-1. Press **A**.
-2. Fill in the details — only **Title** is required. Press **Tab** to move between fields: Title, Author, Publisher, Year, Price, Copies in stock.
+1. Press **A**. The form opens already set to the tab you're on (e.g. on the Cards tab it says **ADD CARD**). On the All or Unsorted tab you choose the category first.
+2. Fill in the details — only **Category** and **Title** are required. Press **Tab** to move between fields: Title, Author, Publisher, Year, Price, Copies in stock. For anything that isn't a book, Author and Publisher are labelled **Artist / Maker** and **Supplier** instead (e.g. Cuala goes in Supplier).
 3. Save. The system assigns a scannable barcode automatically and shows it on screen.
 4. To print a label, run `python scripts/gen_barcode.py --sheet` from the terminal — this produces a print sheet including the new item.
 
@@ -182,6 +192,10 @@ Item-by-item sales totals — quantity, revenue, and cash/card split — for **t
 ### [4] Fix orphaned
 
 Lists transactions that were recorded without a payment method (for example, if the till was interrupted mid-sale). Select one and assign **Cash** or **Card** to correct it retroactively.
+
+### [5] Categories
+
+Lists the item categories and how many items each holds. Highlight one to **Rename** it (type the new name, then Enter or click Rename), move it **Up** or **Down** to change the tab order in Intake, or **Delete** it. Deleting a category that still has items asks you to press Delete a second time, and its items move to Unsorted. Books, Cards and Prints can be renamed but not deleted. New categories are created in Intake.
 
 Press **Esc** to return to the menu, or to the launcher from the main menu.
 
@@ -258,6 +272,9 @@ Items without commercial barcodes (postcards, tour tickets, prints, etc.) can be
 ```bash
 # Add an item and generate its barcode image
 python scripts/gen_barcode.py --add "Postcard — example" --price 4.00
+
+# File it under a category (otherwise it goes in Unsorted)
+python scripts/gen_barcode.py --add "Rainbow" --price 6.00 --category Cards
 
 # Variable-price item (will prompt at counter)
 python scripts/gen_barcode.py --add "Tour admission"

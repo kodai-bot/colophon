@@ -41,6 +41,12 @@ class HeaderBar(Static):
         return f"✦  {self._title}{loc_part}  ✦\n{today}  ·  {clock}"
 
 
+def literal(text: str) -> str:
+    """Escape '[' so key hints like "[P] Price" or "[Esc]" are shown as
+    typed. Textual otherwise reads [P] as a markup tag and drops it."""
+    return text.replace("[", r"\[")
+
+
 class BackButton(Button):
     """
     Visible back/escape control. Same widget, same label across all modes
@@ -49,7 +55,7 @@ class BackButton(Button):
     """
 
     def __init__(self, label: str = "← Back  [Esc]", **kwargs):
-        super().__init__(label, **kwargs)
+        super().__init__(literal(label), **kwargs)
 
 
 _KEY_DISPLAY = {
@@ -74,7 +80,7 @@ class HintBar(Static):
 
     def update_from(self, bindings) -> None:
         labels = [
-            f"[{_humanize_key(b.key)}] {b.description}"
+            literal(f"[{_humanize_key(b.key)}] {b.description}")
             for b in bindings
             if getattr(b, "show", False) and b.description
         ]

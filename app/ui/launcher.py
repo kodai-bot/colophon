@@ -15,7 +15,7 @@ from textual import on
 from datetime import datetime
 from app.utils import load_config
 from app.ui.quotes import get_quote_display
-from app.ui.widgets import HintBar
+from app.ui.widgets import HintBar, literal
 
 
 CSS = """
@@ -128,7 +128,7 @@ class LauncherApp(App):
                 classes="mode-btn",
             )
             yield Button(
-                " [4]  Admin Mode    —  Prices, corrections, reports  [PIN]",
+                literal(" [4]  Admin Mode    —  Prices, corrections, reports  [PIN]"),
                 id="mode-admin",
                 classes="mode-btn",
             )

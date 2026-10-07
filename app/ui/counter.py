@@ -25,7 +25,7 @@ from app.printing import format_receipt, print_receipt, open_drawer
 from app.ui.widgets import (
     HeaderBar, ScanDisplay, DailyManifest,
     NonIsbnPanel, FooterBar, StockAlert,
-    BackButton, HintBar,
+    BackButton, HintBar, literal,
 )
 
 
@@ -266,8 +266,8 @@ class PaymentScreen(ModalScreen):
                 f"{self._item_count} {noun}  ·  Total: €{self._total:.2f}",
                 id="payment-total",
             )
-            yield Button("[C]  Cash", id="btn-cash", classes="payment-btn")
-            yield Button("[K]  Card", id="btn-card", classes="payment-btn")
+            yield Button(literal("[C]  Cash"), id="btn-cash", classes="payment-btn")
+            yield Button(literal("[K]  Card"), id="btn-card", classes="payment-btn")
             yield Static("  Esc to keep basket open", id="payment-skip")
 
     def action_cash(self) -> None:
