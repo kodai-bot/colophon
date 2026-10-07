@@ -17,7 +17,7 @@ from datetime import datetime
 from app.utils import load_config, get_logger, timestamp_now
 from app.catalog import get_db
 from app.ui.quotes import get_quote_display
-from app.ui.widgets import BackButton, HintBar
+from app.ui.widgets import BackButton, HintBar, literal
 
 
 DEFAULT_PAYMENT_TYPES = [
@@ -223,7 +223,7 @@ class PaymentsApp(App):
             yield Static("", id="error-msg")
             with Horizontal(classes="btn-row"):
                 yield Button("  RECORD PAYMENT  ", id="btn-record")
-                yield Button("Cancel  [Esc]", id="btn-cancel")
+                yield Button(literal("Cancel  [Esc]"), id="btn-cancel")
             yield Static("", id="last-recorded")
             yield Static(get_quote_display(), id="footer-quote")
             yield HintBar(id="hint-bar")

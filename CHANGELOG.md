@@ -21,6 +21,10 @@
   new values, like price and stock changes.
 - The nightly catalog CSV gains a `category` column at the end. Existing
   columns are unchanged. `gen_barcode.py --add` takes `--category NAME`.
+- Fixed key hints vanishing from buttons and hint bars. Labels such as
+  "[P] Price", "[C] Cash" and "← Menu [Esc]" showed as just "Price",
+  "Cash" and "← Menu", because the screen library read "[P]" as a
+  formatting code and dropped it. Every mode now shows the keys as intended.
 
 ## v1.6.0 — 2026-10-03
 

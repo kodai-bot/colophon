@@ -25,7 +25,7 @@ from app.catalog import (
 )
 from app.barcode import generate_svg, generate_sheet
 from app.ui.quotes import get_quote_display
-from app.ui.widgets import BackButton, HintBar
+from app.ui.widgets import BackButton, HintBar, literal
 
 
 CSS = """
@@ -425,8 +425,8 @@ class SalePaymentScreen(ModalScreen):
         with Vertical(id="sale-dialog"):
             yield Static(self._title[:44], id="sale-item-title")
             yield Static(price_str, id="sale-item-price")
-            yield Button("[C]  Cash", id="sale-btn-cash", classes="sale-btn")
-            yield Button("[K]  Card", id="sale-btn-card", classes="sale-btn")
+            yield Button(literal("[C]  Cash"), id="sale-btn-cash", classes="sale-btn")
+            yield Button(literal("[K]  Card"), id="sale-btn-card", classes="sale-btn")
             yield Static("Esc to cancel", id="sale-hint")
 
     def action_cash(self) -> None: self.dismiss("cash")
@@ -872,13 +872,13 @@ class IntakeApp(App):
         yield Input(id="scan-input")
 
         with Horizontal(id="action-bar"):
-            yield Button("[P] Price",               id="btn-set-price", classes="action-btn", disabled=True)
-            yield Button("[S] Stock",               id="btn-set-stock", classes="action-btn", disabled=True)
+            yield Button(literal("[P] Price"),               id="btn-set-price", classes="action-btn", disabled=True)
+            yield Button(literal("[S] Stock"),               id="btn-set-stock", classes="action-btn", disabled=True)
             yield Button("[+] Receive",             id="btn-receive",   classes="action-btn")
-            yield Button("[L] Label",               id="btn-gen-label", classes="action-btn", disabled=True)
-            yield Button("[G] Log Sale",            id="btn-log-sale",  classes="action-btn", disabled=True)
-            yield Button("[C] Category",            id="btn-set-category", classes="action-btn", disabled=True)
-            yield Button("[A] Add Item",            id="btn-add-item",  classes="action-btn")
+            yield Button(literal("[L] Label"),               id="btn-gen-label", classes="action-btn", disabled=True)
+            yield Button(literal("[G] Log Sale"),            id="btn-log-sale",  classes="action-btn", disabled=True)
+            yield Button(literal("[C] Category"),            id="btn-set-category", classes="action-btn", disabled=True)
+            yield Button(literal("[A] Add Item"),            id="btn-add-item",  classes="action-btn")
 
         yield HintBar(id="hint-bar")
         yield Static(get_quote_display(), id="footer")
@@ -1011,10 +1011,10 @@ class IntakeApp(App):
         label = f"  {count} {noun}"
         if term:
             label += f" matching '{term}'"
-        label += "  ·  [ ] tabs  ·  ↑↓ browse  ·  [M] mark  ·  [P] price  ·  [S] stock  ·  [+] receive"
+        label += literal("  ·  [ ] tabs  ·  ↑↓ browse  ·  [M] mark  ·  [P] price  ·  [S] stock  ·  [+] receive")
         self.query_one("#catalog-count").update(label)
         self.query_one("#btn-add-item", Button).label = (
-            f"[A] Add {singular(tab_name)}" if tab_name else "[A] Add Item"
+            literal(f"[A] Add {singular(tab_name)}") if tab_name else literal("[A] Add Item")
         )
         self._update_action_bar()
 

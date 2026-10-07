@@ -25,7 +25,7 @@ from app.catalog import (
 )
 from app.summary import write_daily_report, get_daily_sales, get_sales_summary, get_sales_tally, write_tally_csv
 from app.ui.quotes import get_quote_display
-from app.ui.widgets import BackButton, HintBar
+from app.ui.widgets import BackButton, HintBar, literal
 
 
 CSS = """
@@ -450,8 +450,8 @@ class VoidConfirmScreen(ModalScreen):
                 f"{self._title[:44]}\n{price_str}  ·  {self._time_str}",
                 id="void-detail",
             )
-            yield Button("[V]  Confirm Void", id="void-btn-confirm")
-            yield Button("Cancel  [Esc]", id="void-btn-cancel")
+            yield Button(literal("[V]  Confirm Void"), id="void-btn-confirm")
+            yield Button(literal("Cancel  [Esc]"), id="void-btn-cancel")
             yield Static("Esc to cancel", id="void-hint")
 
     def action_confirm(self) -> None: self.dismiss(True)
@@ -545,9 +545,9 @@ class AdminApp(App):
         with Vertical(id="tally-panel"):
             yield Static("SALES TALLY", classes="section-heading")
             with Horizontal(id="tally-period-bar"):
-                yield Button("[T] Today",      id="tally-today",      classes="tally-period-btn -active")
-                yield Button("[M] This Month", id="tally-month",      classes="tally-period-btn")
-                yield Button("[A] All Time",   id="tally-all",        classes="tally-period-btn")
+                yield Button(literal("[T] Today"),      id="tally-today",      classes="tally-period-btn -active")
+                yield Button(literal("[M] This Month"), id="tally-month",      classes="tally-period-btn")
+                yield Button(literal("[A] All Time"),   id="tally-all",        classes="tally-period-btn")
                 yield Button("↓  Export CSV",  id="tally-export-btn")
             yield DataTable(id="tally-table", cursor_type="row")
             yield Static("", id="tally-totals")
@@ -558,8 +558,8 @@ class AdminApp(App):
             yield Static("ORPHANED TRANSACTIONS", classes="section-heading")
             yield DataTable(id="orphan-table", cursor_type="row")
             with Horizontal(id="orphan-actions"):
-                yield Button("[C]  Assign Cash", id="btn-assign-cash", disabled=True)
-                yield Button("[K]  Assign Card", id="btn-assign-card", disabled=True)
+                yield Button(literal("[C]  Assign Cash"), id="btn-assign-cash", disabled=True)
+                yield Button(literal("[K]  Assign Card"), id="btn-assign-card", disabled=True)
             yield Static("", id="orphan-result")
             yield Static("", id="orphan-count")
 
@@ -584,8 +584,8 @@ class AdminApp(App):
         with Vertical(id="report-panel"):
             yield Static("SEND REPORT", classes="section-heading")
             with Horizontal(id="report-date-bar"):
-                yield Button("[T] Today", id="report-date-today", classes="tally-period-btn -active")
-                yield Button("[Y] Yesterday", id="report-date-yesterday", classes="tally-period-btn")
+                yield Button(literal("[T] Today"), id="report-date-today", classes="tally-period-btn -active")
+                yield Button(literal("[Y] Yesterday"), id="report-date-yesterday", classes="tally-period-btn")
                 yield Input(id="report-date-input", placeholder="YYYY-MM-DD", value=format_date())
             yield Static("", id="mount-status")
             yield Static("", id="report-destination")
