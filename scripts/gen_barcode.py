@@ -16,6 +16,9 @@ Usage:
     # Add a new item and generate its barcode image:
     python scripts/gen_barcode.py --add "Postcard — example" --price 4.00
 
+    # ...filed under a category (as listed in Intake; default Unsorted):
+    python scripts/gen_barcode.py --add "Rainbow" --price 6.00 --category Cards
+
     # Re-generate the barcode image for an existing item number:
     python scripts/gen_barcode.py --regenerate 1
 
@@ -35,7 +38,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from pathlib import Path
 from app.utils import load_config, timestamp_now
 from app.catalog import (
-    get_db, make_inhouse_barcode, next_inhouse_number, INHOUSE_PREFIX
+    get_db, make_inhouse_barcode, next_inhouse_number, INHOUSE_PREFIX,
+    list_categories,
 )
 from app.barcode import generate_svg, generate_sheet as _generate_sheet
 
@@ -67,7 +71,23 @@ def cmd_list(conn) -> None:
     print()
 
 
-def cmd_add(conn, config, name: str, price: float | None, number: int | None) -> None:
+def resolve_category(conn, name: str | None) -> int | None:
+    """Category id for a name (case-insensitive); None means Unsorted."""
+    if not name:
+        return None
+    categories = list_categories(conn)
+    for c in categories:
+        if c["name"].lower() == name.strip().lower():
+            return c["id"]
+    print(f"⚠  No category called '{name}'. Choose one of: "
+          + ", ".join(c["name"] for c in categories))
+    print("   New categories are created in Intake.")
+    sys.exit(1)
+
+
+def cmd_add(conn, config, name: str, price: float | None, number: int | None,
+            category: str | None = None) -> None:
+    category_id = resolve_category(conn, category)
     item_number = number if number is not None else next_item_number(conn)
     barcode_number = make_barcode_number(item_number)
 
@@ -82,9 +102,10 @@ def cmd_add(conn, config, name: str, price: float | None, number: int | None) ->
 
     # Register in catalog
     conn.execute("""
-        INSERT INTO catalog (barcode, title, author, price, stock, manual, added_at, updated_at)
-        VALUES (?, ?, ?, ?, 99, 1, ?, ?)
-    """, (barcode_number, name, "In-house", price, timestamp_now(), timestamp_now()))
+        INSERT INTO catalog (barcode, title, author, price, stock, manual, category_id,
+                             added_at, updated_at)
+        VALUES (?, ?, ?, ?, 99, 1, ?, ?, ?)
+    """, (barcode_number, name, "In-house", price, category_id, timestamp_now(), timestamp_now()))
     conn.commit()
 
     svg_path = generate_svg(barcode_number, name, price)
@@ -142,6 +163,8 @@ def main():
                         help="Price in euros (omit for variable-price items)")
     parser.add_argument("--number", type=int, default=None,
                         help="Override item number (default: auto-increment)")
+    parser.add_argument("--category", metavar="NAME", default=None,
+                        help="Category for --add, e.g. Cards (default: Unsorted)")
 
     args = parser.parse_args()
 
@@ -151,7 +174,7 @@ def main():
     if args.list:
         cmd_list(conn)
     elif args.add:
-        cmd_add(conn, config, args.add, args.price, args.number)
+        cmd_add(conn, config, args.add, args.price, args.number, args.category)
     elif args.regenerate is not None:
         cmd_regenerate(conn, args.regenerate)
     elif args.sheet:
