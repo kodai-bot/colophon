@@ -19,7 +19,10 @@ from textual import on
 import hmac
 from datetime import datetime, timedelta
 from app.utils import load_config, get_logger, format_date, parse_date_str, is_mount_available, timestamp_now
-from app.catalog import get_db
+from app.catalog import (
+    get_db, list_categories, rename_category, delete_category, move_category,
+    DEFAULT_CATEGORIES,
+)
 from app.summary import write_daily_report, get_daily_sales, get_sales_summary, get_sales_tally, write_tally_csv
 from app.ui.quotes import get_quote_display
 from app.ui.widgets import BackButton, HintBar
@@ -263,6 +266,54 @@ DataTable {
     color: #c8b89a;
     border-top: solid #1a1a4a;
 }
+
+#category-panel {
+    height: 1fr;
+    overflow-y: auto;
+}
+
+#category-actions {
+    height: 3;
+    margin: 1 1 0 1;
+}
+
+#category-rename-input {
+    width: 32;
+    background: #0f0f1a;
+    border: solid #2a2a5a;
+    color: #c8b89a;
+}
+
+.category-btn {
+    width: auto;
+    min-width: 12;
+    height: 3;
+    margin-left: 1;
+    background: #0a0a1f;
+    border: solid #6a6aaa;
+    color: #c8b89a;
+    content-align: center middle;
+}
+.category-btn:disabled { background: #0f0f1a; border: solid #2a2a4a; color: #3a3a6a; }
+.category-btn:hover { background: #0f0f2f; }
+.category-btn:focus { border: solid #d4af37; color: #d4af37; }
+
+#btn-category-delete { border: solid #aa4a4a; color: #aa6a6a; }
+
+#category-result {
+    color: #4aaa7a;
+    padding: 0 2;
+    height: auto;
+    margin: 0 1 0 1;
+}
+
+#category-help {
+    padding: 0 2;
+    height: auto;
+    margin: 0 1 0 1;
+    color: #6a6a8a;
+    border-top: solid #1a1a4a;
+}
 """
 
 
@@ -428,6 +479,7 @@ class AdminApp(App):
         Binding("2", "menu_report", "Send report", show=True),
         Binding("3", "menu_tally", "Sales tally", show=True),
         Binding("4", "menu_orphans", "Fix orphaned", show=True),
+        Binding("5", "menu_categories", "Categories", show=True),
         Binding("ctrl+q", "quit", "Quit", show=True),
     ]
 
@@ -445,6 +497,9 @@ class AdminApp(App):
         self._tally_period: str = "today"  # today | month | all
         self._orphan_table_ready = False
         self._orphan_selected_txn: str | None = None
+        self._category_table_ready = False
+        self._category_selected_id: int | None = None
+        self._category_delete_armed: int | None = None
         self._report_date: str = format_date()
 
     def compose(self) -> ComposeResult:
@@ -455,7 +510,7 @@ class AdminApp(App):
 
         # Main menu
         with Vertical(id="main-menu"):
-            yield Static("Select an option (click or press 1 – 3):", classes="section-heading")
+            yield Static("Select an option (click or press 1 – 5):", classes="section-heading")
             yield Button(
                 "[1]  View today's sales log  —  See all transactions for today",
                 classes="menu-item", id="menu-sales",
@@ -471,6 +526,10 @@ class AdminApp(App):
             yield Button(
                 "[4]  Fix orphaned transactions  —  Assign payment method to unconfirmed sales",
                 classes="menu-item", id="menu-orphans",
+            )
+            yield Button(
+                "[5]  Categories  —  Rename, reorder or delete item categories",
+                classes="menu-item", id="menu-categories",
             )
 
         # Sales log panel
@@ -504,6 +563,23 @@ class AdminApp(App):
             yield Static("", id="orphan-result")
             yield Static("", id="orphan-count")
 
+        # Categories panel
+        with Vertical(id="category-panel"):
+            yield Static("ITEM CATEGORIES", classes="section-heading")
+            yield DataTable(id="category-table", cursor_type="row")
+            with Horizontal(id="category-actions"):
+                yield Input(placeholder="New name", id="category-rename-input")
+                yield Button("Rename", id="btn-category-rename", classes="category-btn", disabled=True)
+                yield Button("↑ Up", id="btn-category-up", classes="category-btn", disabled=True)
+                yield Button("↓ Down", id="btn-category-down", classes="category-btn", disabled=True)
+                yield Button("✗ Delete", id="btn-category-delete", classes="category-btn", disabled=True)
+            yield Static("", id="category-result")
+            yield Static(
+                "  New categories are created in Intake (no PIN).  Deleting a category moves "
+                "its items to Unsorted.  Books, Cards and Prints can be renamed but not deleted.",
+                id="category-help",
+            )
+
         # Report panel
         with Vertical(id="report-panel"):
             yield Static("SEND REPORT", classes="section-heading")
@@ -531,7 +607,8 @@ class AdminApp(App):
         if not success:
             self.exit()
 
-    _ALL_PANELS = ("main-menu", "sales-panel", "tally-panel", "orphan-panel", "report-panel")
+    _ALL_PANELS = ("main-menu", "sales-panel", "tally-panel", "orphan-panel",
+                   "category-panel", "report-panel")
 
     def _hide_all_panels(self) -> None:
         for panel_id in self._ALL_PANELS:
@@ -922,6 +999,120 @@ class AdminApp(App):
     def _click_orphans(self) -> None:
         self.action_menu_orphans()
 
+    # ── Categories ────────────────────────────────────────────
+
+    def action_menu_categories(self) -> None:
+        if not self._category_table_ready:
+            table = self.query_one("#category-table", DataTable)
+            table.add_columns("Category", "Items")
+            self._category_table_ready = True
+        self._load_category_table()
+        self._show_panel("category-panel")
+        self._mode = "categories"
+        self.query_one("#category-table").focus()
+
+    def _load_category_table(self, keep_id: int | None = None) -> None:
+        table = self.query_one("#category-table", DataTable)
+        table.clear()
+        self._category_delete_armed = None
+        cats = list_categories(self.conn)
+        for c in cats:
+            table.add_row(c["name"], str(c["item_count"]), key=str(c["id"]))
+        unsorted = self.conn.execute(
+            "SELECT COUNT(*) FROM catalog WHERE category_id IS NULL"
+        ).fetchone()[0]
+        table.add_row("Unsorted", str(unsorted), key="unsorted")
+        if keep_id is not None:
+            try:
+                table.move_cursor(row=table.get_row_index(str(keep_id)))
+            except Exception:
+                pass
+
+    @on(DataTable.RowHighlighted, "#category-table")
+    def _category_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
+        key = str(event.row_key.value) if event.row_key else ""
+        self._category_selected_id = int(key) if key.isdigit() else None
+        self._category_delete_armed = None
+        selected = self._category_selected_id is not None
+        protected = self._category_selected_id in {cid for cid, _ in DEFAULT_CATEGORIES}
+        self.query_one("#btn-category-rename", Button).disabled = not selected
+        self.query_one("#btn-category-up", Button).disabled = not selected
+        self.query_one("#btn-category-down", Button).disabled = not selected
+        self.query_one("#btn-category-delete", Button).disabled = not selected or protected
+
+    def _category_name(self, category_id: int) -> str:
+        row = self.conn.execute(
+            "SELECT name FROM categories WHERE id = ?", (category_id,)
+        ).fetchone()
+        return row["name"] if row else "?"
+
+    @on(Button.Pressed, "#btn-category-rename")
+    @on(Input.Submitted, "#category-rename-input")
+    def _rename_category(self) -> None:
+        cid = self._category_selected_id
+        if cid is None:
+            return
+        rename_input = self.query_one("#category-rename-input", Input)
+        old = self._category_name(cid)
+        try:
+            new = rename_category(cid, rename_input.value, self.conn)
+        except ValueError as e:
+            self.query_one("#category-result").update(f"⚠  {e}")
+            return
+        self.logger.info(f"Admin: category renamed id={cid} old='{old}' new='{new}'")
+        rename_input.value = ""
+        self._load_category_table(keep_id=cid)
+        self.query_one("#category-result").update(f"✦  Renamed '{old}' to '{new}'")
+
+    def _move_category(self, direction: int) -> None:
+        cid = self._category_selected_id
+        if cid is None:
+            return
+        move_category(cid, direction, self.conn)
+        self._load_category_table(keep_id=cid)
+        self.query_one("#category-table").focus()
+
+    @on(Button.Pressed, "#btn-category-up")
+    def _click_category_up(self) -> None:
+        self._move_category(-1)
+
+    @on(Button.Pressed, "#btn-category-down")
+    def _click_category_down(self) -> None:
+        self._move_category(1)
+
+    @on(Button.Pressed, "#btn-category-delete")
+    def _delete_category(self) -> None:
+        cid = self._category_selected_id
+        if cid is None:
+            return
+        name = self._category_name(cid)
+        count = self.conn.execute(
+            "SELECT COUNT(*) FROM catalog WHERE category_id = ?", (cid,)
+        ).fetchone()[0]
+        if count and self._category_delete_armed != cid:
+            # Two presses when items would move, so one stray click can't
+            # unsort a whole category.
+            self._category_delete_armed = cid
+            self.query_one("#category-result").update(
+                f"⚠  {count} item{'s' if count != 1 else ''} in '{name}' will move to "
+                "Unsorted — press Delete again to confirm"
+            )
+            return
+        try:
+            moved = delete_category(cid, self.conn)
+        except ValueError as e:
+            self.query_one("#category-result").update(f"⚠  {e}")
+            return
+        self.logger.info(f"Admin: category deleted id={cid} name='{name}' items_unsorted={moved}")
+        self._load_category_table()
+        self.query_one("#category-result").update(
+            f"✦  Deleted '{name}'" + (f"  ·  {moved} items now Unsorted" if moved else "")
+        )
+
+    @on(Button.Pressed, "#menu-categories")
+    def _click_categories(self) -> None:
+        self.action_menu_categories()
+
     @on(Button.Pressed, "#send-report-btn")
     def _send_report(self) -> None:
         raw = self.query_one("#report-date-input", Input).value
@@ -969,6 +1160,8 @@ class AdminApp(App):
             self.query_one("#tally-export-result").update("")
             self.query_one("#orphan-result").update("")
             self.query_one("#orphan-count").update("")
+            self.query_one("#category-result").update("")
+            self._category_delete_armed = None
             self._sales_selected_id = None
             self._orphan_selected_txn = None
             try:
