@@ -1,5 +1,27 @@
 # Changelog
 
+## v1.7.0 — 2026-10-07
+
+- Added **item categories**. Books, cards and prints used to sit in one
+  jumbled A–Z list in Intake, and the only add option was "Add Book", so
+  staff had been typing "-Card" or "-Print" into titles to tell them apart.
+  Intake now has tabs (All · Books · Cards · Prints · Unsorted) to show one
+  category at a time; **[** and **]** step through them.
+- The **Add** form asks for a category, says "Add Card", "Add Print" and so
+  on, and for non-books labels its fields Artist / Maker and Supplier
+  instead of Author and Publisher.
+- **C** moves the highlighted item, or every marked item, to another
+  category. Staff can create a new category (e.g. Calendars) from there or
+  from the Add form, with no PIN. Admin → **[5] Categories** renames,
+  reorders and deletes them.
+- On first start the existing catalog is sorted automatically: real
+  barcodes become Books, and in-house items with "card" or "print" in the
+  title become Cards or Prints. The rest (about 20 items) are left in
+  **Unsorted** for staff to sort. Category changes are logged with old and
+  new values, like price and stock changes.
+- The nightly catalog CSV gains a `category` column at the end. Existing
+  columns are unchanged. `gen_barcode.py --add` takes `--category NAME`.
+
 ## v1.6.0 — 2026-10-03
 
 - Added a **No sale** key to Counter mode (Ctrl+N, or the No sale button)
