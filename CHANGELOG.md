@@ -1,5 +1,25 @@
 # Changelog
 
+## v1.7.0 — 2026-10-09
+
+- When a sale happens that contradicts what the system believes about
+  stock (e.g. an item shows 0 in stock but gets sold anyway — staff are
+  always allowed to complete the sale, that's not changing), the item is
+  now flagged with a `⚠` next to its stock count in Intake, and the
+  catalog summary line shows how many items need a recount. The flag
+  clears the next time someone uses Set Stock or Receive on that item —
+  it's a prompt to walk over and put in the real shelf count, nothing
+  more.
+- Fixed: logging a sale manually from Intake's catalog browser ("Log
+  Sale" — used when a book won't scan or isn't showing up at the
+  counter) now correctly reduces the stock count, same as every other
+  way of recording a sale. Previously it recorded the sale but left
+  stock untouched.
+- Fixed: a scanned barcode that isn't in the catalog and isn't found
+  online now shows up in Admin's "Fix orphaned" screen like any other
+  incomplete sale. Previously these were invisible to that screen and
+  only found by manually scrolling the full Sales log.
+
 ## v1.6.0 — 2026-10-03
 
 - Added a **No sale** key to Counter mode (Ctrl+N, or the No sale button)
