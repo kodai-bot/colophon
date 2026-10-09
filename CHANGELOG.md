@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.7.0 — 2026-10-09
+## v1.7.2 — 2026-10-09
 
 - When a sale happens that contradicts what the system believes about
   stock (e.g. an item shows 0 in stock but gets sold anyway — staff are
