@@ -19,7 +19,7 @@ from textual import on
 import hmac
 from datetime import datetime, timedelta
 from app.utils import load_config, get_logger, format_date, parse_date_str, is_mount_available, timestamp_now
-from app.catalog import get_db
+from app.catalog import get_db, get_inhouse_prefix
 from app.summary import write_daily_report, get_daily_sales, get_sales_summary, get_sales_tally, write_tally_csv
 from app.ui.quotes import get_quote_display
 from app.ui.widgets import BackButton, HintBar
@@ -762,7 +762,7 @@ class AdminApp(App):
         table = self.query_one("#tally-table", DataTable)
         table.clear()
         self.query_one("#tally-export-result").update("")
-        inhouse_prefix = self.config.get("catalog", {}).get("inhouse_prefix", "2000001")
+        inhouse_prefix = get_inhouse_prefix(self.config)
         start, end = self._tally_date_range()
         rows = get_sales_tally(self.conn, start, end, inhouse_prefix=inhouse_prefix)
         for r in rows:
@@ -815,7 +815,7 @@ class AdminApp(App):
     @on(Button.Pressed, "#tally-export-btn")
     def _tally_export(self) -> None:
         today = format_date()
-        inhouse_prefix = self.config.get("catalog", {}).get("inhouse_prefix", "2000001")
+        inhouse_prefix = get_inhouse_prefix(self.config)
         start, end = self._tally_date_range()
         rows = get_sales_tally(self.conn, start, end, inhouse_prefix=inhouse_prefix)
         label = {"today": "today", "month": "month", "all": "alltime"}[self._tally_period]
