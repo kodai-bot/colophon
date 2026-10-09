@@ -22,6 +22,7 @@ from app.utils import load_config, get_logger
 from app.catalog import get_db, resolve_barcode, decrement_stock, normalize_barcode, get_inhouse_prefix
 from app.logger import record_sale, void_last_sale
 from app.printing import format_receipt, print_receipt, open_drawer
+from app.payment_methods import PAYMENT_METHODS
 from app.ui.widgets import (
     HeaderBar, ScanDisplay, DailyManifest,
     NonIsbnPanel, FooterBar, StockAlert,
@@ -249,8 +250,8 @@ class PaymentScreen(ModalScreen):
     """
 
     BINDINGS = [
-        Binding("c", "cash", "Cash", show=False),
-        Binding("k", "card", "Card", show=False),
+        Binding(m.key, f"choose('{m.value}')", m.label, show=False) for m in PAYMENT_METHODS
+    ] + [
         Binding("escape", "skip", "Skip", show=False),
     ]
 
@@ -266,26 +267,23 @@ class PaymentScreen(ModalScreen):
                 f"{self._item_count} {noun}  ·  Total: €{self._total:.2f}",
                 id="payment-total",
             )
-            yield Button("[C]  Cash", id="btn-cash", classes="payment-btn")
-            yield Button("[K]  Card", id="btn-card", classes="payment-btn")
+            for m in PAYMENT_METHODS:
+                yield Button(
+                    f"[{m.key.upper()}]  {m.label}",
+                    id=f"btn-{m.value}",
+                    classes="payment-btn",
+                )
             yield Static("  Esc to keep basket open", id="payment-skip")
 
-    def action_cash(self) -> None:
-        self.dismiss("cash")
-
-    def action_card(self) -> None:
-        self.dismiss("card")
+    def action_choose(self, value: str) -> None:
+        self.dismiss(value)
 
     def action_skip(self) -> None:
         self.dismiss(None)
 
-    @on(Button.Pressed, "#btn-cash")
-    def _cash(self) -> None:
-        self.dismiss("cash")
-
-    @on(Button.Pressed, "#btn-card")
-    def _card(self) -> None:
-        self.dismiss("card")
+    @on(Button.Pressed, ".payment-btn")
+    def _button_pressed(self, event: Button.Pressed) -> None:
+        self.dismiss(event.button.id.removeprefix("btn-"))
 
 
 
@@ -325,8 +323,7 @@ class CounterApp(App):
         self._last_scan_at: float = 0.0
         self._daily_items = 0
         self._daily_revenue = 0.0
-        self._daily_cash = 0.0
-        self._daily_card = 0.0
+        self._daily_totals: dict[str, float] = {m.value: 0.0 for m in PAYMENT_METHODS}
         self._txn_id: str | None = None
         self._basket_items = 0
         self._basket_total = 0.0
@@ -340,12 +337,12 @@ class CounterApp(App):
         """, (today,)).fetchone()
         self._daily_items = row["cnt"] or 0
         self._daily_revenue = row["rev"] or 0.0
-        for attr, method in (("_daily_cash", "cash"), ("_daily_card", "card")):
+        for m in PAYMENT_METHODS:
             r = self.conn.execute("""
                 SELECT SUM(COALESCE(price, 0) * quantity) as rev
                 FROM sales WHERE DATE(sold_at) = ? AND voided = 0 AND payment_method = ?
-            """, (today, method)).fetchone()
-            setattr(self, attr, r["rev"] or 0.0)
+            """, (today, m.value)).fetchone()
+            self._daily_totals[m.value] = r["rev"] or 0.0
 
     def _new_txn_id(self) -> str:
         return datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -382,7 +379,7 @@ class CounterApp(App):
     def on_mount(self) -> None:
         self.query_one("#scan-input").focus()
         self.query_one(DailyManifest).update_totals(
-            self._daily_items, self._daily_revenue, self._daily_cash, self._daily_card
+            self._daily_items, self._daily_revenue, self._daily_totals
         )
         self.query_one(HintBar).update_from(self.BINDINGS)
         self._quote_timer = self.set_interval(60, self._rotate_quote)
@@ -483,7 +480,7 @@ class CounterApp(App):
 
         self.query_one(ScanDisplay).show_book(title, author, price_str, ok=True)
         self.query_one(DailyManifest).update_totals(
-            self._daily_items, self._daily_revenue, self._daily_cash, self._daily_card
+            self._daily_items, self._daily_revenue, self._daily_totals
         )
         self._update_basket_display()
         self.query_one(FooterBar).refresh_quote()
@@ -545,7 +542,7 @@ class CounterApp(App):
 
         self.query_one(ScanDisplay).show_item(name, price_str)
         self.query_one(DailyManifest).update_totals(
-            self._daily_items, self._daily_revenue, self._daily_cash, self._daily_card
+            self._daily_items, self._daily_revenue, self._daily_totals
         )
         self._update_basket_display()
         self.query_one(FooterBar).refresh_quote()
@@ -593,17 +590,13 @@ class CounterApp(App):
                 receipt = format_receipt(items, basket_total, method, txn_id, self.config)
                 print_receipt(receipt, self.config, self.logger)
 
-                if method == "cash":
-                    self._daily_cash += basket_total
-                elif method == "card":
-                    self._daily_card += basket_total
+                self._daily_totals[method] = self._daily_totals.get(method, 0.0) + basket_total
                 self._txn_id = None
                 self._basket_items = 0
                 self._basket_total = 0.0
                 self._update_basket_display()
                 self.query_one(DailyManifest).update_totals(
-                    self._daily_items, self._daily_revenue,
-                    self._daily_cash, self._daily_card,
+                    self._daily_items, self._daily_revenue, self._daily_totals,
                 )
                 scan = self.query_one(ScanDisplay)
                 scan.show_sale_complete(basket_total, method, basket_items)
@@ -652,7 +645,7 @@ class CounterApp(App):
 
         self.query_one(ScanDisplay).show_item("Discount", price_str)
         self.query_one(DailyManifest).update_totals(
-            self._daily_items, self._daily_revenue, self._daily_cash, self._daily_card
+            self._daily_items, self._daily_revenue, self._daily_totals
         )
         self._update_basket_display()
         self.query_one(FooterBar).refresh_quote()
@@ -700,16 +693,14 @@ class CounterApp(App):
         self._daily_items = max(0, self._daily_items - (sale.get("quantity") or 1))
         self._daily_revenue = max(0.0, self._daily_revenue - price)
         method = sale.get("payment_method")
-        if method == "cash":
-            self._daily_cash = max(0.0, self._daily_cash - price)
-        elif method == "card":
-            self._daily_card = max(0.0, self._daily_card - price)
+        if method in self._daily_totals:
+            self._daily_totals[method] = max(0.0, self._daily_totals[method] - price)
 
         scan.show_book(
             f"VOIDED: {title}", f"Sale removed  ·  {price_str} reversed", "", ok=False
         )
         self.query_one(DailyManifest).update_totals(
-            self._daily_items, self._daily_revenue, self._daily_cash, self._daily_card
+            self._daily_items, self._daily_revenue, self._daily_totals
         )
         self.query_one(FooterBar).refresh_quote()
 
