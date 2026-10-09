@@ -16,6 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from app.utils import load_config, get_logger, get_report_path, write_csv, format_date
 from app.catalog import get_db
+from app.payment_methods import CASH, CARD
 
 
 def get_daily_payments(date_str: str, conn) -> list[dict]:
@@ -70,14 +71,14 @@ def get_sales_tally(conn, start_date: str, end_date: str | None = None,
     """
     if end_date is None:
         end_date = start_date
-    rows = conn.execute("""
+    rows = conn.execute(f"""
         SELECT
             s.barcode,
             s.title,
-            SUM(s.quantity)                                                                          AS qty,
-            SUM(COALESCE(s.price, 0) * s.quantity)                                                   AS revenue,
-            SUM(CASE WHEN s.payment_method = 'cash' THEN COALESCE(s.price, 0) * s.quantity ELSE 0 END) AS cash,
-            SUM(CASE WHEN s.payment_method = 'card' THEN COALESCE(s.price, 0) * s.quantity ELSE 0 END) AS card
+            SUM(s.quantity)                                                                                AS qty,
+            SUM(COALESCE(s.price, 0) * s.quantity)                                                         AS revenue,
+            SUM(CASE WHEN s.payment_method = '{CASH.value}' THEN COALESCE(s.price, 0) * s.quantity ELSE 0 END) AS cash,
+            SUM(CASE WHEN s.payment_method = '{CARD.value}' THEN COALESCE(s.price, 0) * s.quantity ELSE 0 END) AS card
         FROM sales s
         WHERE DATE(s.sold_at) BETWEEN ? AND ? AND s.voided = 0
         GROUP BY s.barcode, s.title
@@ -113,11 +114,11 @@ def get_sales_summary(sales: list[dict]) -> dict:
     total_revenue = sum((s["price"] or 0) * s["quantity"] for s in sales)
     cash_revenue = sum(
         (s["price"] or 0) * s["quantity"]
-        for s in sales if s.get("payment_method") == "cash"
+        for s in sales if s.get("payment_method") == CASH.value
     )
     card_revenue = sum(
         (s["price"] or 0) * s["quantity"]
-        for s in sales if s.get("payment_method") == "card"
+        for s in sales if s.get("payment_method") == CARD.value
     )
     return {
         "total_transactions": len(sales),
