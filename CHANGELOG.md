@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.7.0 — 2026-10-09
+## v1.7.1 — 2026-10-09
 
 - Internal refactor, no staff-visible change. Two small abstractions, added
   to make the code easier to extend safely later without adding complexity
