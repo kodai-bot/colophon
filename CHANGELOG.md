@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.7.0 — 2026-10-09
+
+- Internal fix, no staff-visible change. Admin's Sales Tally panel was
+  reading the in-house barcode prefix with its own hardcoded default
+  instead of using the shared helper (`get_inhouse_prefix`) that every
+  other part of the app already uses — harmless today, but a future
+  change to the default would have silently drifted out of sync in Admin.
+
 ## v1.6.0 — 2026-10-03
 
 - Added a **No sale** key to Counter mode (Ctrl+N, or the No sale button)
