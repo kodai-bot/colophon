@@ -12,17 +12,19 @@ from flask import Flask, g, request, render_template
 from app.catalog import get_db, get_inhouse_prefix
 from app.utils import load_config, get_logger, parse_date_str, format_date
 from app.summary import get_daily_sales, get_sales_summary, get_sales_tally, get_low_stock
+from app.payment_methods import PAYMENT_METHODS
 
 
 def _range_summary(rows: list[dict]) -> dict:
     """Totals/cash/card summed across get_sales_tally() rows (a date range)."""
-    return {
+    summary = {
         "total_transactions": None,  # not meaningful once grouped by title
         "total_items_sold": sum(r["qty"] for r in rows),
         "total_revenue": round(sum(r["revenue"] for r in rows), 2),
-        "cash_revenue": round(sum(r["cash"] for r in rows), 2),
-        "card_revenue": round(sum(r["card"] for r in rows), 2),
     }
+    for m in PAYMENT_METHODS:
+        summary[f"{m.value}_revenue"] = round(sum(r[m.value] for r in rows), 2)
+    return summary
 
 
 def create_app(config: dict) -> Flask:
@@ -72,6 +74,7 @@ def create_app(config: dict) -> Flask:
         low_stock = get_low_stock(low_threshold, g.conn)
 
         dash_cfg = config.get("dashboard", {})
+        method_totals = [(m, summary.get(f"{m.value}_revenue", 0.0)) for m in PAYMENT_METHODS]
 
         return render_template(
             "dashboard/index.html",
@@ -85,6 +88,8 @@ def create_app(config: dict) -> Flask:
             tally=tally,
             low_stock=low_stock,
             refresh_seconds=dash_cfg.get("refresh_seconds", 30),
+            payment_methods=PAYMENT_METHODS,
+            method_totals=method_totals,
         )
 
     return app
