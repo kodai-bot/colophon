@@ -1,5 +1,25 @@
 # Changelog
 
+## v1.7.0 — 2026-10-09
+
+- Internal refactor, no staff-visible change. Two small abstractions, added
+  to make the code easier to extend safely later without adding complexity
+  now:
+  - `app/printing.py` now sends receipts through a `Printer` interface
+    (`CupsEscPosPrinter`, the same CUPS `lp -o raw` transport as before,
+    tested against the shop's Epson TM-T20II). A future printer model is a
+    new class implementing the same interface, not a rewrite. Nothing
+    about how printing is configured or used day-to-day changes.
+  - New `app/payment_methods.py` is now the single place "cash" and "card"
+    are defined, replacing duplicated cash/card logic that had spread
+    across Counter, Admin, the daily reports and the dashboard. A future
+    payment method (e.g. a digital-euro label) becomes a few lines in one
+    file instead of changes in five. Card sales are still only recorded,
+    never processed, as before.
+  - Covered by the existing test suite (all tests pass unmodified, plus a
+    few new ones for the two seams) and a manual Counter/Admin smoke test;
+    no database migration, no change to CSV report columns.
+
 ## v1.6.0 — 2026-10-03
 
 - Added a **No sale** key to Counter mode (Ctrl+N, or the No sale button)
