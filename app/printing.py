@@ -8,6 +8,9 @@ since by the time this is called the sale is already committed to the DB.
 
 import subprocess
 from datetime import datetime
+from typing import Protocol
+
+from app.payment_methods import get_method
 
 CODEPAGE = "cp858"  # matches SELECT_CODEPAGE_PC858 below (PC858 has the Euro sign)
 
@@ -66,7 +69,8 @@ def format_receipt(
     cut_mode = printer_cfg.get("cut_mode", "partial")
     footer = printer_cfg.get("footer_line", "")
     shop_name = config.get("shop", {}).get("name", "Shop")
-    kick_drawer = payment_method == "cash" and printer_cfg.get("cash_drawer", False)
+    method = get_method(payment_method)
+    kick_drawer = bool(method and method.kicks_drawer) and printer_cfg.get("cash_drawer", False)
     drawer_pin = printer_cfg.get("drawer_pin", 2)
 
     body_lines = [datetime.now().strftime("%a %d %b %Y  %H:%M"), ""]
@@ -94,15 +98,68 @@ def format_receipt(
     return bytes(out)
 
 
-def print_receipt(receipt_bytes: bytes, config: dict, logger) -> bool:
+class Printer(Protocol):
+    """The transport seam: anything that can send raw receipt bytes
+    somewhere. CupsEscPosPrinter below is the only implementation that has
+    ever been needed in production. A future printer model (different
+    transport, same ESC/POS bytes) adds a new class here, nothing else."""
+
+    def send(self, data: bytes, config: dict, logger, what: str) -> bool: ...
+
+
+class CupsEscPosPrinter:
+    """Sends raw ESC/POS bytes to a CUPS queue via `lp -d <queue> -o raw`.
+    Proven in production against an Epson TM-T20II over USB."""
+
+    def send(self, data: bytes, config: dict, logger, what: str) -> bool:
+        printer_cfg = config.get("printer", {})
+        if not printer_cfg.get("enabled", False):
+            return False
+
+        queue = printer_cfg.get("queue_name", "colophon_receipt")
+
+        try:
+            result = subprocess.run(
+                ["lp", "-d", queue, "-o", "raw"],
+                input=data,
+                capture_output=True,
+                timeout=10,
+            )
+        except FileNotFoundError:
+            logger.warning(f"{what} failed: 'lp' command not found (is CUPS installed?)")
+            return False
+        except subprocess.TimeoutExpired:
+            logger.warning(f"{what} failed: 'lp' command timed out")
+            return False
+        except Exception as e:
+            logger.warning(f"{what} failed: {e}")
+            return False
+
+        if result.returncode != 0:
+            logger.warning(
+                f"{what} failed (lp exit {result.returncode}): "
+                f"{result.stderr.decode(errors='replace').strip()}"
+            )
+            return False
+
+        logger.info(f"{what} sent to queue '{queue}'")
+        return True
+
+
+_default_printer = CupsEscPosPrinter()
+
+
+def print_receipt(
+    receipt_bytes: bytes, config: dict, logger, printer: Printer = _default_printer
+) -> bool:
     """
     Send receipt_bytes to the configured CUPS queue via `lp -d <queue> -o raw`.
     Returns True on success, False on any failure. Never raises.
     """
-    return _send_raw(receipt_bytes, config, logger, "Receipt")
+    return printer.send(receipt_bytes, config, logger, "Receipt")
 
 
-def open_drawer(config: dict, logger) -> bool:
+def open_drawer(config: dict, logger, printer: Printer = _default_printer) -> bool:
     """
     Open the cash drawer on its own, with no receipt (Counter mode's No sale).
     Returns False without sending anything if the drawer isn't enabled.
@@ -111,40 +168,4 @@ def open_drawer(config: dict, logger) -> bool:
     if not printer_cfg.get("cash_drawer", False):
         return False
     kick = DRAWER_KICK.get(printer_cfg.get("drawer_pin", 2), DRAWER_KICK[2])
-    return _send_raw(INIT + kick, config, logger, "Drawer kick")
-
-
-def _send_raw(data: bytes, config: dict, logger, what: str) -> bool:
-    """Send raw ESC/POS bytes to the CUPS queue. Never raises."""
-    printer_cfg = config.get("printer", {})
-    if not printer_cfg.get("enabled", False):
-        return False
-
-    queue = printer_cfg.get("queue_name", "colophon_receipt")
-
-    try:
-        result = subprocess.run(
-            ["lp", "-d", queue, "-o", "raw"],
-            input=data,
-            capture_output=True,
-            timeout=10,
-        )
-    except FileNotFoundError:
-        logger.warning(f"{what} failed: 'lp' command not found (is CUPS installed?)")
-        return False
-    except subprocess.TimeoutExpired:
-        logger.warning(f"{what} failed: 'lp' command timed out")
-        return False
-    except Exception as e:
-        logger.warning(f"{what} failed: {e}")
-        return False
-
-    if result.returncode != 0:
-        logger.warning(
-            f"{what} failed (lp exit {result.returncode}): "
-            f"{result.stderr.decode(errors='replace').strip()}"
-        )
-        return False
-
-    logger.info(f"{what} sent to queue '{queue}'")
-    return True
+    return printer.send(INIT + kick, config, logger, "Drawer kick")

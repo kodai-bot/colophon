@@ -12,14 +12,12 @@
       <div class="value">€{{ "%.2f"|format(summary.total_revenue) }}</div>
       <div class="label">Total revenue</div>
     </div>
+    {% for method, amount in method_totals %}
     <div class="stat">
-      <div class="value">€{{ "%.2f"|format(summary.cash_revenue) }}</div>
-      <div class="label">Cash</div>
+      <div class="value">€{{ "%.2f"|format(amount) }}</div>
+      <div class="label">{{ method.label }}</div>
     </div>
-    <div class="stat">
-      <div class="value">€{{ "%.2f"|format(summary.card_revenue) }}</div>
-      <div class="label">Card</div>
-    </div>
+    {% endfor %}
     <div class="stat">
       <div class="value">{{ summary.total_items_sold }}</div>
       <div class="label">Items sold</div>
@@ -39,7 +37,8 @@
   <table>
     <tr>
       <th>Type</th><th>Title</th><th class="right">Qty</th>
-      <th class="right">Revenue</th><th class="right">Cash</th><th class="right">Card</th>
+      <th class="right">Revenue</th>
+      {% for m in payment_methods %}<th class="right">{{ m.label }}</th>{% endfor %}
     </tr>
     {% for row in tally %}
     <tr>
@@ -47,8 +46,7 @@
       <td>{{ row.title }}</td>
       <td class="right">{{ row.qty }}</td>
       <td class="right">€{{ "%.2f"|format(row.revenue) }}</td>
-      <td class="right">€{{ "%.2f"|format(row.cash) }}</td>
-      <td class="right">€{{ "%.2f"|format(row.card) }}</td>
+      {% for m in payment_methods %}<td class="right">€{{ "%.2f"|format(row[m.value]) }}</td>{% endfor %}
     </tr>
     {% endfor %}
   </table>

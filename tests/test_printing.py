@@ -11,6 +11,7 @@ import pytest
 from app.printing import (
     format_currency, format_line_item, format_receipt, print_receipt,
     INIT, SELECT_CODEPAGE_PC858, CUT_COMMANDS, CODEPAGE, DRAWER_KICK, open_drawer,
+    CupsEscPosPrinter,
 )
 
 
@@ -242,3 +243,53 @@ def test_open_drawer_does_nothing_when_disabled(config, monkeypatch):
 
     monkeypatch.setattr(subprocess, "run", fail_run)
     assert open_drawer(config, StubLogger()) is False
+
+
+# ── printer seam ────────────────────────────────────────────────
+# Proves CupsEscPosPrinter is a complete, swappable implementation of the
+# Printer protocol, and that print_receipt/open_drawer delegate to whatever
+# printer is injected (defaulting to CupsEscPosPrinter in production).
+
+def test_cupsescpos_printer_used_directly(config, monkeypatch):
+    class FakeResult:
+        returncode = 0
+        stderr = b""
+
+    captured = {}
+
+    def fake_run(args, input=None, capture_output=None, timeout=None):
+        captured["args"] = args
+        captured["input"] = input
+        return FakeResult()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    logger = StubLogger()
+
+    result = CupsEscPosPrinter().send(b"receipt-bytes", config, logger, "Receipt")
+
+    assert result is True
+    assert captured["args"] == ["lp", "-d", "colophon_receipt", "-o", "raw"]
+    assert captured["input"] == b"receipt-bytes"
+    assert logger.warnings == []
+
+
+class _FakePrinter:
+    def __init__(self):
+        self.calls = []
+
+    def send(self, data, config, logger, what):
+        self.calls.append((data, what))
+        return True
+
+
+def test_print_receipt_delegates_to_injected_printer(config):
+    fake = _FakePrinter()
+    assert print_receipt(b"data", config, StubLogger(), printer=fake) is True
+    assert fake.calls == [(b"data", "Receipt")]
+
+
+def test_open_drawer_delegates_to_injected_printer(config):
+    config["printer"]["cash_drawer"] = True
+    fake = _FakePrinter()
+    assert open_drawer(config, StubLogger(), printer=fake) is True
+    assert fake.calls == [(INIT + DRAWER_KICK[2], "Drawer kick")]

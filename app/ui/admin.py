@@ -23,6 +23,7 @@ from app.catalog import get_db, get_inhouse_prefix
 from app.summary import write_daily_report, get_daily_sales, get_sales_summary, get_sales_tally, write_tally_csv
 from app.ui.quotes import get_quote_display
 from app.ui.widgets import BackButton, HintBar
+from app.payment_methods import PAYMENT_METHODS
 
 
 CSS = """
@@ -499,8 +500,13 @@ class AdminApp(App):
             yield Static("ORPHANED TRANSACTIONS", classes="section-heading")
             yield DataTable(id="orphan-table", cursor_type="row")
             with Horizontal(id="orphan-actions"):
-                yield Button("[C]  Assign Cash", id="btn-assign-cash", disabled=True)
-                yield Button("[K]  Assign Card", id="btn-assign-card", disabled=True)
+                for m in PAYMENT_METHODS:
+                    yield Button(
+                        f"[{m.key.upper()}]  Assign {m.label}",
+                        id=f"btn-assign-{m.value}",
+                        classes="btn-assign",
+                        disabled=True,
+                    )
             yield Static("", id="orphan-result")
             yield Static("", id="orphan-count")
 
@@ -592,12 +598,15 @@ class AdminApp(App):
 
         live = [r for r in rows if not r["voided"]]
         total = sum(r["price"] or 0.0 for r in live)
-        cash  = sum(r["price"] or 0.0 for r in live if r["payment_method"] == "cash")
-        card  = sum(r["price"] or 0.0 for r in live if r["payment_method"] == "card")
+        method_totals = {
+            m.value: sum(r["price"] or 0.0 for r in live if r["payment_method"] == m.value)
+            for m in PAYMENT_METHODS
+        }
         n = len(live)
+        method_str = "  ·  ".join(f"{m.label}: €{method_totals[m.value]:.2f}" for m in PAYMENT_METHODS)
         self.query_one("#sales-totals").update(
             f"  {n} sale{'s' if n != 1 else ''}  ·  "
-            f"Total: €{total:.2f}  ·  Cash: €{cash:.2f}  ·  Card: €{card:.2f}"
+            f"Total: €{total:.2f}  ·  {method_str}"
         )
 
     # ── Menu actions: keyboard + click both route here ────────
@@ -740,7 +749,7 @@ class AdminApp(App):
     def action_menu_tally(self) -> None:
         if not self._tally_table_ready:
             table = self.query_one("#tally-table", DataTable)
-            table.add_columns("Type", "Title", "Qty", "Revenue", "Cash", "Card")
+            table.add_columns("Type", "Title", "Qty", "Revenue", *[m.label for m in PAYMENT_METHODS])
             self._tally_table_ready = True
         self._tally_period = "today"
         self._set_tally_period_active("tally-today")
@@ -771,19 +780,18 @@ class AdminApp(App):
                 (r["title"] or "")[:38],
                 str(r["qty"]),
                 f"€{r['revenue']:.2f}",
-                f"€{r['cash']:.2f}",
-                f"€{r['card']:.2f}",
+                *[f"€{r[m.value]:.2f}" for m in PAYMENT_METHODS],
             )
         total_qty = sum(r["qty"] for r in rows)
         total_rev = sum(r["revenue"] for r in rows)
-        total_cash = sum(r["cash"] for r in rows)
-        total_card = sum(r["card"] for r in rows)
+        method_totals = {m.value: sum(r[m.value] for r in rows) for m in PAYMENT_METHODS}
         n = len(rows)
         label = {"today": "today", "month": "this month", "all": "all time"}[self._tally_period]
+        method_str = "  ·  ".join(f"{m.label}: €{method_totals[m.value]:.2f}" for m in PAYMENT_METHODS)
         self.query_one("#tally-totals").update(
             f"  {n} distinct item{'s' if n != 1 else ''} sold {label}  ·  "
             f"{total_qty} units  ·  Total: €{total_rev:.2f}  ·  "
-            f"Cash: €{total_cash:.2f}  ·  Card: €{total_card:.2f}"
+            f"{method_str}"
         )
 
     def _set_tally_period_active(self, active_id: str) -> None:
@@ -855,8 +863,8 @@ class AdminApp(App):
         table = self.query_one("#orphan-table", DataTable)
         table.clear()
         self._orphan_selected_txn = None
-        self.query_one("#btn-assign-cash", Button).disabled = True
-        self.query_one("#btn-assign-card", Button).disabled = True
+        for btn in self.query(".btn-assign"):
+            btn.disabled = True
         self.query_one("#orphan-result").update("")
         rows = self.conn.execute("""
             SELECT
@@ -894,8 +902,8 @@ class AdminApp(App):
     def _orphan_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
         self._orphan_selected_txn = str(event.row_key.value) if event.row_key else None
         enabled = self._orphan_selected_txn is not None
-        self.query_one("#btn-assign-cash", Button).disabled = not enabled
-        self.query_one("#btn-assign-card", Button).disabled = not enabled
+        for btn in self.query(".btn-assign"):
+            btn.disabled = not enabled
 
     def _assign_to_orphan(self, method: str) -> None:
         txn = self._orphan_selected_txn
@@ -910,13 +918,9 @@ class AdminApp(App):
         self.query_one("#orphan-result").update(f"✦  Assigned {method.upper()} to transaction {txn}")
         self._load_orphan_table()
 
-    @on(Button.Pressed, "#btn-assign-cash")
-    def _click_assign_cash(self) -> None:
-        self._assign_to_orphan("cash")
-
-    @on(Button.Pressed, "#btn-assign-card")
-    def _click_assign_card(self) -> None:
-        self._assign_to_orphan("card")
+    @on(Button.Pressed, ".btn-assign")
+    def _click_assign(self, event: Button.Pressed) -> None:
+        self._assign_to_orphan(event.button.id.removeprefix("btn-assign-"))
 
     @on(Button.Pressed, "#menu-orphans")
     def _click_orphans(self) -> None:

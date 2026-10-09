@@ -10,6 +10,7 @@ from textual.widgets import Static, Button
 from textual.reactive import reactive
 from datetime import datetime
 from app.ui.quotes import get_quote_display
+from app.payment_methods import PAYMENT_METHODS
 
 
 IDLE_PHRASES = [
@@ -184,8 +185,7 @@ class DailyManifest(Static):
     basket_total: reactive[float] = reactive(0.0)
     items: reactive[int] = reactive(0)
     revenue: reactive[float] = reactive(0.0)
-    cash: reactive[float] = reactive(0.0)
-    card: reactive[float] = reactive(0.0)
+    totals: reactive[dict] = reactive(dict)
     last_sync: reactive[str] = reactive("not yet")
 
     def render(self) -> str:
@@ -193,13 +193,16 @@ class DailyManifest(Static):
             basket_line = f"  {self.basket_items} item{'s' if self.basket_items != 1 else ''}   €{self.basket_total:.2f}\n"
         else:
             basket_line = "  —  empty\n"
+        method_lines = "".join(
+            f"  {m.label}:".ljust(11) + f"€{self.totals.get(m.value, 0.0):.2f}\n"
+            for m in PAYMENT_METHODS
+        )
         return (
             f"  TODAY'S TOTAL\n"
             f"  ─────────────────\n"
             f"  Items:   {self.items}\n"
             f"  Revenue: €{self.revenue:.2f}\n"
-            f"  Cash:    €{self.cash:.2f}\n"
-            f"  Card:    €{self.card:.2f}\n"
+            f"{method_lines}"
             f"  THIS SALE\n"
             f"  ─────────────────\n"
             f"{basket_line}"
@@ -209,12 +212,10 @@ class DailyManifest(Static):
         self.basket_items = items
         self.basket_total = total
 
-    def update_totals(self, items: int, revenue: float,
-                      cash: float = 0.0, card: float = 0.0) -> None:
+    def update_totals(self, items: int, revenue: float, totals: dict[str, float]) -> None:
         self.items = items
         self.revenue = revenue
-        self.cash = cash
-        self.card = card
+        self.totals = totals
 
     def update_sync(self, sync_time: str) -> None:
         self.last_sync = sync_time
