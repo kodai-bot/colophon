@@ -444,10 +444,12 @@ class CounterApp(App):
         if item is None:
             self.logger.warning(f"Unknown barcode scanned: {barcode}")
             scan.show_book(f"{self._ui.get('barcode_label', 'Barcode')}: {barcode}", "Not found in databanks", "", ok=False)
+            if self._txn_id is None:
+                self._txn_id = self._new_txn_id()
             self.conn.execute("""
-                INSERT INTO sales (barcode, title, quantity, price, sold_at)
-                VALUES (?, ?, 1, NULL, ?)
-            """, (barcode, "UNKNOWN", datetime.now().isoformat()))
+                INSERT INTO sales (barcode, title, quantity, price, sold_at, transaction_id)
+                VALUES (?, ?, 1, NULL, ?, ?)
+            """, (barcode, "UNKNOWN", datetime.now().isoformat(), self._txn_id))
             self.conn.commit()
             self.query_one(FooterBar).refresh_quote()
             return

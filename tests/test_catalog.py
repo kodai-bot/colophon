@@ -58,6 +58,30 @@ def test_decrement_stock_does_not_go_negative(in_memory_db, sample_item):
     add_item(sample_item, in_memory_db)
     new_stock = decrement_stock("9780571331475", in_memory_db)
     assert new_stock == 0
+    assert get_item("9780571331475", in_memory_db)["needs_recount"] == 1
+
+
+def test_decrement_stock_does_not_flag_when_stock_positive(in_memory_db, sample_item):
+    add_item(sample_item, in_memory_db)
+    decrement_stock("9780571331475", in_memory_db)
+    assert get_item("9780571331475", in_memory_db)["needs_recount"] == 0
+
+
+def test_decrement_stock_preserves_existing_flag(in_memory_db, sample_item):
+    add_item(sample_item, in_memory_db)
+    in_memory_db.execute(
+        "UPDATE catalog SET needs_recount = 1 WHERE barcode = ?",
+        ("9780571331475",),
+    )
+    in_memory_db.commit()
+    decrement_stock("9780571331475", in_memory_db)
+    assert get_item("9780571331475", in_memory_db)["needs_recount"] == 1
+
+
+def test_create_tables_migration_is_idempotent(in_memory_db, sample_item):
+    _create_tables(in_memory_db)  # second call must not raise
+    add_item(sample_item, in_memory_db)
+    assert get_item("9780571331475", in_memory_db)["needs_recount"] == 0
 
 
 def test_add_item_upserts_on_duplicate_barcode(in_memory_db, sample_item):
