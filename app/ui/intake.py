@@ -18,7 +18,7 @@ from datetime import datetime
 from app.utils import load_config, get_logger, timestamp_now
 from app.catalog import (
     get_db, add_item, get_item, normalize_barcode, get_inhouse_prefix,
-    make_inhouse_barcode, next_inhouse_number,
+    make_inhouse_barcode, next_inhouse_number, decrement_stock,
 )
 from app.barcode import generate_svg, generate_sheet
 from app.ui.quotes import get_quote_display
@@ -680,14 +680,14 @@ class IntakeApp(App):
 
         if term:
             rows = self.conn.execute("""
-                SELECT barcode, title, author, price, stock
+                SELECT barcode, title, author, price, stock, needs_recount
                 FROM catalog
                 WHERE LOWER(title) LIKE ? OR LOWER(author) LIKE ?
                 ORDER BY title
             """, (f"%{term.lower()}%", f"%{term.lower()}%")).fetchall()
         else:
             rows = self.conn.execute("""
-                SELECT barcode, title, author, price, stock
+                SELECT barcode, title, author, price, stock, needs_recount
                 FROM catalog
                 ORDER BY title
             """).fetchall()
@@ -696,12 +696,15 @@ class IntakeApp(App):
             barcode = row["barcode"] or ""
             price_str = f"€{row['price']:.2f}" if row["price"] else "—"
             mark = "✓" if barcode in self._marked_barcodes else " "
+            stock_str = str(row["stock"] or 0)
+            if row["needs_recount"]:
+                stock_str += " ⚠"
             table.add_row(
                 mark,
                 (row["title"] or "")[:38],
                 (row["author"] or "")[:24],
                 price_str,
-                str(row["stock"] or 0),
+                stock_str,
                 key=barcode,
             )
 
@@ -711,6 +714,9 @@ class IntakeApp(App):
         if term:
             label += f" matching '{term}'"
         label += "  ·  ↑↓ browse  ·  [M] mark  ·  [P] price  ·  [S] stock  ·  [+] receive"
+        recount_n = sum(1 for row in rows if row["needs_recount"])
+        if recount_n:
+            label += f"  ·  ⚠ {recount_n} need recount"
         self.query_one("#catalog-count").update(label)
         self._update_action_bar()
 
@@ -1023,7 +1029,7 @@ class IntakeApp(App):
             ).fetchone()
             old_stock = old_row["stock"] if old_row else None
             self.conn.execute(
-                "UPDATE catalog SET stock = ?, updated_at = ? WHERE barcode = ?",
+                "UPDATE catalog SET stock = ?, needs_recount = 0, updated_at = ? WHERE barcode = ?",
                 (stock, now, barcode),
             )
             self.logger.info(
@@ -1089,7 +1095,7 @@ class IntakeApp(App):
             now = datetime.now().isoformat()
             for barcode in barcodes:
                 self.conn.execute(
-                    "UPDATE catalog SET stock = stock + ?, updated_at = ? WHERE barcode = ?",
+                    "UPDATE catalog SET stock = stock + ?, needs_recount = 0, updated_at = ? WHERE barcode = ?",
                     (qty, now, barcode),
                 )
                 self.logger.info(f"Intake: received +{qty} for barcode={barcode}")
@@ -1174,10 +1180,13 @@ class IntakeApp(App):
             (barcode, row["title"], row["price"], timestamp_now(), method),
         )
         self.conn.commit()
+        decrement_stock(barcode, self.conn)
         price_str = f"€{row['price']:.2f}" if row["price"] else "no price"
         self.logger.info(
             f"Intake: manual sale logged '{row['title']}' {price_str} {method}"
         )
+        term = self.query_one("#catalog-search-input").value.strip()
+        self._load_catalog_table(term)
         self.query_one("#selection-info").update(
             f"  ✦  Sale logged: '{row['title']}'  ·  {price_str}  ·  {method.upper()}"
         )
