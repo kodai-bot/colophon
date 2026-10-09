@@ -178,6 +178,7 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         "ALTER TABLE sales ADD COLUMN payment_method TEXT",
         "ALTER TABLE sales ADD COLUMN transaction_id TEXT",
         "ALTER TABLE payments ADD COLUMN payment_method TEXT",
+        "ALTER TABLE catalog ADD COLUMN needs_recount INTEGER DEFAULT 0",
         # Rename isbn → barcode (SQLite >= 3.25)
         "ALTER TABLE catalog RENAME COLUMN isbn TO barcode",
         "ALTER TABLE sales RENAME COLUMN isbn TO barcode",
@@ -250,10 +251,19 @@ def add_item(item: dict, conn: sqlite3.Connection) -> None:
 def decrement_stock(barcode: str, conn: sqlite3.Connection, qty: int = 1) -> int:
     """
     Reduce stock count for an item after a sale.
-    Returns new stock level.
+    If stock was already at or below zero before this sale, flags the item
+    as needing a manual recount instead of silently discarding the
+    contradiction. Returns new stock level.
+
+    Note: if qty > 1 oversells an item that was still in stock (e.g.
+    stock=2, qty=5), the pre-update stock is >0 so needs_recount is not
+    set — every current caller passes qty=1, so this doesn't arise today.
     """
     conn.execute("""
-        UPDATE catalog SET stock = MAX(0, stock - ?), updated_at = ?
+        UPDATE catalog
+        SET stock = MAX(0, stock - ?),
+            needs_recount = CASE WHEN stock <= 0 THEN 1 ELSE needs_recount END,
+            updated_at = ?
         WHERE barcode = ?
     """, (qty, timestamp_now(), barcode))
     conn.commit()
