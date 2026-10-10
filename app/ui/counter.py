@@ -26,7 +26,7 @@ from app.payment_methods import PAYMENT_METHODS
 from app.ui.widgets import (
     HeaderBar, ScanDisplay, DailyManifest,
     NonIsbnPanel, FooterBar, StockAlert,
-    BackButton, HintBar,
+    BackButton, HintBar, literal,
 )
 
 
@@ -269,7 +269,7 @@ class PaymentScreen(ModalScreen):
             )
             for m in PAYMENT_METHODS:
                 yield Button(
-                    f"[{m.key.upper()}]  {m.label}",
+                    literal(f"[{m.key.upper()}]  {m.label}"),
                     id=f"btn-{m.value}",
                     classes="payment-btn",
                 )

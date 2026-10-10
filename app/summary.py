@@ -44,9 +44,11 @@ def get_daily_sales(date_str: str, conn) -> list[dict]:
 def get_catalog(conn) -> list[dict]:
     """Fetch full catalog sorted by title."""
     rows = conn.execute("""
-        SELECT barcode, title, author, publisher, year, price, stock
-        FROM catalog
-        ORDER BY title
+        SELECT c.barcode, c.title, c.author, c.publisher, c.year, c.price, c.stock,
+               COALESCE(k.name, 'Unsorted') AS category
+        FROM catalog c
+        LEFT JOIN categories k ON k.id = c.category_id
+        ORDER BY c.title
     """).fetchall()
     return [dict(r) for r in rows]
 
@@ -179,13 +181,16 @@ def write_daily_report(date_str: str, config: dict, logger) -> Path:
     remapped_catalog = [
         {barcode_label: r["barcode"], "title": r["title"],
          creator_label: r["author"], vendor_label: r["publisher"],
-         "year": r["year"], "price": r["price"], "stock": r["stock"]}
+         "year": r["year"], "price": r["price"], "stock": r["stock"],
+         "category": r["category"]}
         for r in catalog
     ]
+    # category is appended last (v1.7.0) so existing column positions don't move
     write_csv(
         catalog_file,
         remapped_catalog,
-        fieldnames=[barcode_label, "title", creator_label, vendor_label, "year", "price", "stock"]
+        fieldnames=[barcode_label, "title", creator_label, vendor_label, "year", "price", "stock",
+                    "category"]
     )
     logger.info(f"Catalog export: {len(catalog)} items")
 

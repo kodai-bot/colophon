@@ -8,7 +8,8 @@ No sales are logged here (use Log Sale button for manual entries only).
 """
 
 from textual.app import App, ComposeResult
-from textual.widgets import Static, Input, Button, DataTable
+from textual.widgets import Static, Input, Button, DataTable, Select, OptionList
+from textual.widgets.option_list import Option
 from textual.containers import Horizontal, Vertical
 from textual.binding import Binding
 from textual.screen import ModalScreen
@@ -19,10 +20,12 @@ from app.utils import load_config, get_logger, timestamp_now
 from app.catalog import (
     get_db, add_item, get_item, normalize_barcode, get_inhouse_prefix,
     make_inhouse_barcode, next_inhouse_number, decrement_stock,
+    BOOKS_CATEGORY_ID, list_categories, create_category, set_category,
+    get_category_name,
 )
 from app.barcode import generate_svg, generate_sheet
 from app.ui.quotes import get_quote_display
-from app.ui.widgets import BackButton, HintBar
+from app.ui.widgets import BackButton, HintBar, literal
 
 
 CSS = """
@@ -49,6 +52,24 @@ CSS = """
     border: solid #2a2a5a;
     color: #c8b89a;
 }
+
+#category-bar {
+    height: 1;
+    margin: 0 1;
+}
+
+.cat-tab {
+    height: 1;
+    min-width: 6;
+    border: none;
+    padding: 0 1;
+    margin-right: 1;
+    background: #1a1a3a;
+    color: #8a8aaa;
+}
+
+.cat-tab:hover { background: #2a2a4a; color: #c8b89a; }
+.cat-tab.-active { background: #1a4a2a; color: #4aaa7a; text-style: bold; }
 
 #catalog-count {
     color: #5a5a8a;
@@ -404,8 +425,8 @@ class SalePaymentScreen(ModalScreen):
         with Vertical(id="sale-dialog"):
             yield Static(self._title[:44], id="sale-item-title")
             yield Static(price_str, id="sale-item-price")
-            yield Button("[C]  Cash", id="sale-btn-cash", classes="sale-btn")
-            yield Button("[K]  Card", id="sale-btn-card", classes="sale-btn")
+            yield Button(literal("[C]  Cash"), id="sale-btn-cash", classes="sale-btn")
+            yield Button(literal("[K]  Card"), id="sale-btn-card", classes="sale-btn")
             yield Static("Esc to cancel", id="sale-hint")
 
     def action_cash(self) -> None: self.dismiss("cash")
@@ -419,6 +440,110 @@ class SalePaymentScreen(ModalScreen):
     def _card(self) -> None: self.dismiss("card")
 
 
+# ── Categories ───────────────────────────────────────────────────────────────
+
+NEW_CATEGORY = "__new__"   # picker option that opens NewCategoryModal
+UNSORTED = "unsorted"      # picker / tab key for items with no category
+
+
+def singular(category_name: str) -> str:
+    """'Cards' -> 'Card', 'Jewellery' -> 'Jewellery'. Good enough for labels."""
+    if len(category_name) > 1 and category_name.endswith("s") and not category_name.endswith("ss"):
+        return category_name[:-1]
+    return category_name
+
+
+class NewCategoryModal(ModalScreen):
+    """Name a new category. create_fn(name) -> {"id", "name"}, raising
+    ValueError on a bad name; the error is shown here so staff can correct it."""
+
+    DEFAULT_CSS = _DIALOG_CSS.format(cls="NewCategoryModal", border="#4aaa7a")
+
+    BINDINGS = [Binding("escape", "cancel", "Cancel")]
+
+    def __init__(self, create_fn, **kwargs):
+        super().__init__(**kwargs)
+        self._create_fn = create_fn
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="dialog-box"):
+            yield Static("NEW CATEGORY", id="dialog-title")
+            yield Static("e.g. Calendars, Jewellery, Tickets", id="dialog-info")
+            yield Static("  Category name (plural):", id="dialog-label")
+            yield Input(placeholder="Calendars", id="dialog-input")
+            yield Static("  Enter to create   ·   Esc to cancel", id="dialog-hint")
+
+    def on_mount(self) -> None:
+        self.query_one("#dialog-input").focus()
+
+    @on(Input.Submitted, "#dialog-input")
+    def confirm(self, event: Input.Submitted) -> None:
+        try:
+            self.dismiss(self._create_fn(event.value))
+        except ValueError as e:
+            self.query_one("#dialog-info").update(f"⚠  {e}")
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
+class CategoryPickerModal(ModalScreen):
+    """Choose a category for one or more items. Dismisses with a category id,
+    UNSORTED, or None on cancel."""
+
+    DEFAULT_CSS = _DIALOG_CSS.format(cls="CategoryPickerModal", border="#4aaa7a") + """
+    #category-options {
+        height: auto;
+        max-height: 14;
+        background: #09091f;
+        border: solid #4aaa7a;
+    }
+    """
+
+    BINDINGS = [Binding("escape", "cancel", "Cancel")]
+
+    def __init__(self, item_display: str, current: str, categories: list[dict],
+                 create_fn, **kwargs):
+        super().__init__(**kwargs)
+        self._item_display = item_display
+        self._current = current
+        self._categories = categories
+        self._create_fn = create_fn
+
+    def compose(self) -> ComposeResult:
+        options = [Option(c["name"], id=str(c["id"])) for c in self._categories]
+        options.append(Option("Unsorted", id=UNSORTED))
+        options.append(Option("＋ New category…", id=NEW_CATEGORY))
+        with Vertical(id="dialog-box"):
+            yield Static(self._item_display[:56], id="dialog-title")
+            yield Static(f"Currently: {self._current}", id="dialog-info")
+            yield Static("  Move to category:", id="dialog-label")
+            yield OptionList(*options, id="category-options")
+            yield Static("  ↑↓ then Enter   ·   Esc to cancel", id="dialog-hint")
+
+    def on_mount(self) -> None:
+        self.query_one("#category-options").focus()
+
+    @on(OptionList.OptionSelected, "#category-options")
+    def _chosen(self, event: OptionList.OptionSelected) -> None:
+        key = event.option.id
+        if key == NEW_CATEGORY:
+            self.app.push_screen(
+                NewCategoryModal(self._create_fn), callback=self._on_new_category
+            )
+        elif key == UNSORTED:
+            self.dismiss(UNSORTED)
+        else:
+            self.dismiss(int(key))
+
+    def _on_new_category(self, category: dict | None) -> None:
+        if category:
+            self.dismiss(category["id"])
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
 # ── Add Item modal ───────────────────────────────────────────────────────────
 
 class AddItemModal(ModalScreen):
@@ -426,6 +551,8 @@ class AddItemModal(ModalScreen):
 
     Pass barcode="" (default) to show an editable barcode field with auto-assign
     fallback. Pass a scanned barcode to pre-fill it as a read-only label.
+    A category must be chosen; the heading and field labels follow it (books
+    get Author / Publisher, everything else Artist / Supplier).
     Dismisses with a dict of field values, or None on cancel.
     """
 
@@ -455,6 +582,11 @@ class AddItemModal(ModalScreen):
     }
 
     .add-label { color: #8a8aaa; height: 1; padding: 0 1; }
+
+    #add-category {
+        margin: 0 0 1 0;
+        width: 40;
+    }
 
     .add-input {
         background: #0f0f1a;
@@ -504,26 +636,63 @@ class AddItemModal(ModalScreen):
 
     BINDINGS = [Binding("escape", "cancel", "Cancel")]
 
-    def __init__(self, barcode: str = "", ui: dict | None = None, **kwargs):
+    def __init__(self, barcode: str = "", ui: dict | None = None,
+                 categories: list[dict] | None = None,
+                 category_id: int | None = None, create_fn=None, **kwargs):
         super().__init__(**kwargs)
         self._barcode = barcode
         self._ui = ui or {}
+        self._categories = list(categories or [])
+        self._category_id = category_id
+        self._create_fn = create_fn
+
+    def _category_options(self) -> list[tuple[str, object]]:
+        options = [(c["name"], c["id"]) for c in self._categories]
+        if self._create_fn:
+            options.append(("＋ New category…", NEW_CATEGORY))
+        return options
+
+    def _category_name(self) -> str | None:
+        for c in self._categories:
+            if c["id"] == self._category_id:
+                return c["name"]
+        return None
+
+    def _labels(self) -> dict:
+        """Heading and field labels for the chosen category."""
+        name = self._category_name()
+        is_book = self._category_id == BOOKS_CATEGORY_ID
+        barcode_label = self._ui.get("barcode_label", "Barcode") if is_book else "Barcode"
+        thing = singular(name).upper() if name else "ITEM"
+        if self._barcode:
+            heading = f"ADD {thing} — SCANNED {barcode_label.upper()}"
+        else:
+            heading = f"ADD {thing} MANUALLY"
+        return {
+            "heading": heading,
+            "barcode": barcode_label,
+            "creator": self._ui.get("creator_label", "Author") if is_book else "Artist / Maker",
+            "vendor": self._ui.get("vendor_label", "Publisher") if is_book else "Supplier",
+            "save": f"  ✦  Save {singular(name) if name else 'Item'}",
+        }
 
     def compose(self) -> ComposeResult:
-        barcode_label = self._ui.get("barcode_label", "Barcode")
-        creator_label = self._ui.get("creator_label", "Author / Creator")
-        vendor_label = self._ui.get("vendor_label", "Publisher / Source")
-        item_singular = self._ui.get("item_singular", "item").upper()
-
-        heading = f"ADD {item_singular} — SCANNED {barcode_label.upper()}" if self._barcode else f"ADD {item_singular} MANUALLY"
+        labels = self._labels()
         with Vertical(id="add-dialog"):
-            yield Static(heading, id="add-dialog-title")
+            yield Static(labels["heading"], id="add-dialog-title")
+            yield Static("  Category *", classes="add-label")
+            yield Select(
+                self._category_options(),
+                prompt="Choose category…",
+                value=self._category_id if self._category_id is not None else Select.NULL,
+                id="add-category",
+            )
             if self._barcode:
-                yield Static(f"  {barcode_label}: {self._barcode}", id="add-barcode-display")
+                yield Static(f"  {labels['barcode']}: {self._barcode}", id="add-barcode-display")
             else:
                 yield Static(
-                    f"  {barcode_label}  (leave blank to auto-assign in-house barcode):",
-                    classes="add-label",
+                    f"  {labels['barcode']}  (leave blank to auto-assign in-house barcode):",
+                    classes="add-label", id="add-barcode-label",
                 )
                 yield Input(
                     placeholder="Optional — leave blank for in-house barcode",
@@ -532,10 +701,10 @@ class AddItemModal(ModalScreen):
                 )
             yield Static("  Title *", classes="add-label")
             yield Input(placeholder="Title", id="add-title", classes="add-input")
-            yield Static(f"  {creator_label}", classes="add-label")
-            yield Input(placeholder=creator_label, id="add-author", classes="add-input")
-            yield Static(f"  {vendor_label}", classes="add-label")
-            yield Input(placeholder=vendor_label, id="add-publisher", classes="add-input")
+            yield Static(f"  {labels['creator']}", classes="add-label", id="add-creator-label")
+            yield Input(placeholder=labels["creator"], id="add-author", classes="add-input")
+            yield Static(f"  {labels['vendor']}", classes="add-label", id="add-vendor-label")
+            yield Input(placeholder=labels["vendor"], id="add-publisher", classes="add-input")
             yield Static("  Year", classes="add-label")
             yield Input(placeholder="e.g. 1993", id="add-year", classes="add-input")
             yield Static("  Price (€)", classes="add-label")
@@ -543,13 +712,61 @@ class AddItemModal(ModalScreen):
             yield Static("  Copies in stock", classes="add-label")
             yield Input(placeholder="e.g. 1", id="add-stock-input")
             yield Static("", id="add-error")
-            yield Button(f"  ✦  Save {item_singular.title()}", id="add-save-btn")
+            yield Button(labels["save"], id="add-save-btn")
             yield Static("  Tab between fields   ·   Esc to cancel", id="add-hint")
 
     def on_mount(self) -> None:
+        if self._category_id is None:
+            self.query_one("#add-category").focus()
+        else:
+            self.query_one("#add-title").focus()
+
+    def _refresh_labels(self) -> None:
+        labels = self._labels()
+        self.query_one("#add-dialog-title").update(labels["heading"])
+        self.query_one("#add-creator-label").update(f"  {labels['creator']}")
+        self.query_one("#add-author").placeholder = labels["creator"]
+        self.query_one("#add-vendor-label").update(f"  {labels['vendor']}")
+        self.query_one("#add-publisher").placeholder = labels["vendor"]
+        self.query_one("#add-save-btn").label = labels["save"]
+        if self._barcode:
+            self.query_one("#add-barcode-display").update(
+                f"  {labels['barcode']}: {self._barcode}"
+            )
+        else:
+            self.query_one("#add-barcode-label").update(
+                f"  {labels['barcode']}  (leave blank to auto-assign in-house barcode):"
+            )
+
+    @on(Select.Changed, "#add-category")
+    def _category_changed(self, event: Select.Changed) -> None:
+        if event.value == NEW_CATEGORY:
+            self.app.push_screen(
+                NewCategoryModal(self._create_fn), callback=self._on_new_category
+            )
+            return
+        self._category_id = None if event.value is Select.NULL else event.value
+        self.query_one("#add-error").update("")
+        self._refresh_labels()
+
+    def _on_new_category(self, category: dict | None) -> None:
+        select = self.query_one("#add-category", Select)
+        if category:
+            self._categories.append(category)
+            self._category_id = category["id"]
+            select.set_options(self._category_options())
+        # Put the picker back on the real choice (set_options clears it, and a
+        # cancelled "New category…" must not stay selected).
+        select.value = self._category_id if self._category_id is not None else Select.NULL
+        self._refresh_labels()
         self.query_one("#add-title").focus()
 
     def _collect(self) -> dict | None:
+        if self._category_id is None:
+            self.query_one("#add-error").update("  ⚠  Choose a category")
+            self.query_one("#add-category").focus()
+            return None
+
         title = self.query_one("#add-title").value.strip()
         if not title:
             self.query_one("#add-error").update("  ⚠  Title is required")
@@ -581,6 +798,7 @@ class AddItemModal(ModalScreen):
             "year": self.query_one("#add-year").value.strip() or None,
             "price": price,
             "stock": stock,
+            "category_id": self._category_id,
         }
 
     @on(Button.Pressed, "#add-save-btn")
@@ -611,6 +829,9 @@ class IntakeApp(App):
         Binding("plus,kp_add,equals_sign", "receive", "Receive +", show=True),
         Binding("m", "toggle_mark", "Mark", show=True),
         Binding("a", "add_item", "Add Item", show=True),
+        Binding("c", "set_category", "Category", show=True),
+        Binding("left_square_bracket", "prev_category_tab", "Previous tab", show=False),
+        Binding("right_square_bracket", "next_category_tab", "Next tab", show=False),
         Binding("ctrl+q", "quit", "Quit", show=True),
     ]
 
@@ -626,10 +847,11 @@ class IntakeApp(App):
         self._mark_col_key = None
         self._current_new_item: dict | None = None
         self._receive_mode: bool = False
+        # Category tab: "all", UNSORTED, or a category id
+        self._category_filter: str | int = "all"
 
     def compose(self) -> ComposeResult:
         creator_label = self._ui.get("creator_label", "Author")
-        item_singular = self._ui.get("item_singular", "item").title()
 
         with Horizontal(id="topbar"):
             yield Static(
@@ -643,54 +865,130 @@ class IntakeApp(App):
             placeholder=f"Filter by title / {creator_label.lower()} — or scan a barcode…",
             id="catalog-search-input",
         )
+        yield Horizontal(id="category-bar")
         yield Static("", id="catalog-count")
         yield DataTable(id="catalog-table", cursor_type="row")
         yield Static("", id="selection-info")
         yield Input(id="scan-input")
 
         with Horizontal(id="action-bar"):
-            yield Button("[P] Price",               id="btn-set-price", classes="action-btn", disabled=True)
-            yield Button("[S] Stock",               id="btn-set-stock", classes="action-btn", disabled=True)
+            yield Button(literal("[P] Price"),               id="btn-set-price", classes="action-btn", disabled=True)
+            yield Button(literal("[S] Stock"),               id="btn-set-stock", classes="action-btn", disabled=True)
             yield Button("[+] Receive",             id="btn-receive",   classes="action-btn")
-            yield Button("[L] Label",               id="btn-gen-label", classes="action-btn", disabled=True)
-            yield Button("[G] Log Sale",            id="btn-log-sale",  classes="action-btn", disabled=True)
-            yield Button(f"[A] Add {item_singular}", id="btn-add-item",  classes="action-btn")
+            yield Button(literal("[L] Label"),               id="btn-gen-label", classes="action-btn", disabled=True)
+            yield Button(literal("[G] Log Sale"),            id="btn-log-sale",  classes="action-btn", disabled=True)
+            yield Button(literal("[C] Category"),            id="btn-set-category", classes="action-btn", disabled=True)
+            yield Button(literal("[A] Add Item"),            id="btn-add-item",  classes="action-btn")
 
         yield HintBar(id="hint-bar")
         yield Static(get_quote_display(), id="footer")
 
     def on_mount(self) -> None:
-        creator_label = self._ui.get("creator_label", "Author")
-        table = self.query_one("#catalog-table", DataTable)
-        self._mark_col_key = table.add_column(" ", width=2)
-        table.add_column("Title",          width=38)
-        table.add_column(creator_label,    width=24)
-        table.add_column("Price",          width=8)
-        table.add_column("Stock",          width=6)
+        self._build_category_tabs()
         self._load_catalog_table()
         self.query_one(HintBar).update_from(self.BINDINGS)
         self.query_one("#catalog-search-input").focus()
 
+    # ── Category tabs ─────────────────────────────────────────
+
+    def _categories(self) -> list[dict]:
+        return list_categories(self.conn)
+
+    def _tab_keys(self) -> list[str | int]:
+        return ["all"] + [c["id"] for c in self._categories()] + [UNSORTED]
+
+    def _build_category_tabs(self) -> None:
+        """(Re)build the tab strip: All · <categories> · Unsorted."""
+        bar = self.query_one("#category-bar", Horizontal)
+        bar.remove_children()
+        tabs = [("all", "All")]
+        tabs += [(str(c["id"]), c["name"]) for c in self._categories()]
+        tabs.append((UNSORTED, "Unsorted"))
+        bar.mount(*[
+            Button(label, name=key, compact=True,
+                   classes="cat-tab -active" if key == str(self._category_filter) else "cat-tab")
+            for key, label in tabs
+        ])
+
+    def _select_category_tab(self, key: str | int) -> None:
+        if key == self._category_filter:
+            return
+        self._category_filter = key
+        # Marks are cleared so a bulk Price/Stock/Category can't silently
+        # include items hidden on another tab.
+        self._marked_barcodes.clear()
+        for btn in self.query(".cat-tab"):
+            btn.set_class(btn.name == str(key), "-active")
+        self._load_catalog_table(self.query_one("#catalog-search-input").value.strip())
+
+    @on(Button.Pressed, ".cat-tab")
+    def _click_category_tab(self, event: Button.Pressed) -> None:
+        key = event.button.name
+        self._select_category_tab(int(key) if key.isdigit() else key)
+        self.query_one("#catalog-table", DataTable).focus()
+
+    def _cycle_category_tab(self, step: int) -> None:
+        keys = self._tab_keys()
+        i = keys.index(self._category_filter) if self._category_filter in keys else 0
+        self._select_category_tab(keys[(i + step) % len(keys)])
+
+    def action_prev_category_tab(self) -> None:
+        self._cycle_category_tab(-1)
+
+    def action_next_category_tab(self) -> None:
+        self._cycle_category_tab(1)
+
+    def _current_tab_name(self) -> str | None:
+        """Name of the selected category tab, or None for All / Unsorted."""
+        if isinstance(self._category_filter, int):
+            return get_category_name(self._category_filter, self.conn)
+        return None
+
+    def _create_category(self, name: str) -> dict:
+        """create_fn for the category modals; raises ValueError on a bad name."""
+        cat_id = create_category(name, self.conn)
+        cat_name = get_category_name(cat_id, self.conn)
+        self.logger.info(f"Intake: category created '{cat_name}' (id={cat_id})")
+        self._build_category_tabs()
+        return {"id": cat_id, "name": cat_name}
+
     # ── Catalog table ─────────────────────────────────────────
 
-    def _load_catalog_table(self, term: str = "") -> None:
+    def _setup_columns(self, show_category: bool) -> None:
+        creator_label = self._ui.get("creator_label", "Author")
         table = self.query_one("#catalog-table", DataTable)
-        table.clear()
+        table.clear(columns=True)
+        self._mark_col_key = table.add_column(" ", width=2)
+        table.add_column("Title",          width=38)
+        table.add_column(creator_label,    width=24)
+        if show_category:
+            table.add_column("Category",   width=10)
+        table.add_column("Price",          width=8)
+        table.add_column("Stock",          width=6)
+
+    def _load_catalog_table(self, term: str = "") -> None:
+        show_category = self._category_filter == "all"
+        self._setup_columns(show_category)
+        table = self.query_one("#catalog-table", DataTable)
         self._highlighted_barcode = None
 
+        where, params = [], []
         if term:
-            rows = self.conn.execute("""
-                SELECT barcode, title, author, price, stock, needs_recount
-                FROM catalog
-                WHERE LOWER(title) LIKE ? OR LOWER(author) LIKE ?
-                ORDER BY title
-            """, (f"%{term.lower()}%", f"%{term.lower()}%")).fetchall()
-        else:
-            rows = self.conn.execute("""
-                SELECT barcode, title, author, price, stock, needs_recount
-                FROM catalog
-                ORDER BY title
-            """).fetchall()
+            where.append("(LOWER(c.title) LIKE ? OR LOWER(c.author) LIKE ?)")
+            params += [f"%{term.lower()}%", f"%{term.lower()}%"]
+        if self._category_filter == UNSORTED:
+            where.append("c.category_id IS NULL")
+        elif isinstance(self._category_filter, int):
+            where.append("c.category_id = ?")
+            params.append(self._category_filter)
+        rows = self.conn.execute(f"""
+            SELECT c.barcode, c.title, c.author, c.price, c.stock, c.needs_recount,
+                   COALESCE(k.name, 'Unsorted') AS category
+            FROM catalog c
+            LEFT JOIN categories k ON k.id = c.category_id
+            {"WHERE " + " AND ".join(where) if where else ""}
+            ORDER BY c.title
+        """, params).fetchall()
 
         for row in rows:
             barcode = row["barcode"] or ""
@@ -699,29 +997,38 @@ class IntakeApp(App):
             stock_str = str(row["stock"] or 0)
             if row["needs_recount"]:
                 stock_str += " ⚠"
-            table.add_row(
-                mark,
-                (row["title"] or "")[:38],
-                (row["author"] or "")[:24],
-                price_str,
-                stock_str,
-                key=barcode,
-            )
+            cells = [mark, (row["title"] or "")[:38], (row["author"] or "")[:24]]
+            if show_category:
+                cells.append(row["category"][:10])
+            cells += [price_str, stock_str]
+            table.add_row(*cells, key=barcode)
 
         count = len(rows)
-        item_plural = self._ui.get("item_plural", "items")
-        label = f"  {count} {item_plural if count != 1 else self._ui.get('item_singular', 'item')}"
+        tab_name = self._current_tab_name()
+        if tab_name:
+            noun = tab_name.lower() if count != 1 else singular(tab_name).lower()
+        elif self._category_filter == UNSORTED:
+            noun = "unsorted items" if count != 1 else "unsorted item"
+        else:
+            noun = "items" if count != 1 else "item"
+        label = f"  {count} {noun}"
         if term:
             label += f" matching '{term}'"
-        label += "  ·  ↑↓ browse  ·  [M] mark  ·  [P] price  ·  [S] stock  ·  [+] receive"
+        label += literal("  ·  [ ] tabs  ·  ↑↓ browse  ·  [M] mark  ·  [P] price  ·  [S] stock  ·  [+] receive")
         recount_n = sum(1 for row in rows if row["needs_recount"])
         if recount_n:
             label += f"  ·  ⚠ {recount_n} need recount"
         self.query_one("#catalog-count").update(label)
+        self.query_one("#btn-add-item", Button).label = (
+            literal(f"[A] Add {singular(tab_name)}") if tab_name else literal("[A] Add Item")
+        )
         self._update_action_bar()
 
     def _jump_to_barcode(self, barcode: str) -> None:
         table = self.query_one("#catalog-table", DataTable)
+        if barcode not in table.rows and self._category_filter != "all":
+            # The item lives on another tab — show All so it can be found.
+            self._select_category_tab("all")
         try:
             row_index = table.get_row_index(barcode)
             table.move_cursor(row=row_index)
@@ -748,6 +1055,7 @@ class IntakeApp(App):
 
         self.query_one("#btn-set-price", Button).disabled = not has_any
         self.query_one("#btn-set-stock", Button).disabled = not has_any
+        self.query_one("#btn-set-category", Button).disabled = not has_any
         # Receive stays enabled with nothing selected — it's also how you
         # enter scan-to-receive mode (see action_receive).
         self.query_one("#btn-gen-label", Button).disabled = not is_inhouse
@@ -837,10 +1145,7 @@ class IntakeApp(App):
             return
 
         if not self.config.get("api", {}).get("lookup_enabled", True):
-            self.push_screen(
-                AddItemModal(barcode=barcode, ui=self._ui),
-                callback=self._on_add_item,
-            )
+            self._open_add_item(barcode)
             return
 
         self.query_one("#selection-info").update("  Querying Open Library…")
@@ -862,10 +1167,7 @@ class IntakeApp(App):
                 callback=self._on_price_entered,
             )
         else:
-            self.push_screen(
-                AddItemModal(barcode=barcode, ui=self._ui),
-                callback=self._on_add_item,
-            )
+            self._open_add_item(barcode)
 
     def _on_price_entered(self, price: float | None) -> None:
         item = self._current_new_item
@@ -873,6 +1175,7 @@ class IntakeApp(App):
             return
         item["price"] = price
         item["stock"] = 1
+        item["category_id"] = BOOKS_CATEGORY_ID
         add_item(item, self.conn)
         self.logger.info(
             f"Intake: new item '{item['title']}' added — price {price}"
@@ -902,8 +1205,26 @@ class IntakeApp(App):
 
     # ── Add Item action ───────────────────────────────────────
 
+    def _open_add_item(self, barcode: str = "") -> None:
+        """Open the Add form, defaulting the category to the selected tab
+        (or Books for a scanned ISBN). Under All / Unsorted staff must pick."""
+        if barcode[:3] in ("978", "979"):
+            category_id = BOOKS_CATEGORY_ID
+        elif isinstance(self._category_filter, int):
+            category_id = self._category_filter
+        else:
+            category_id = None
+        self.push_screen(
+            AddItemModal(
+                barcode=barcode, ui=self._ui,
+                categories=self._categories(), category_id=category_id,
+                create_fn=self._create_category,
+            ),
+            callback=self._on_add_item,
+        )
+
     def action_add_item(self) -> None:
-        self.push_screen(AddItemModal(ui=self._ui), callback=self._on_add_item)
+        self._open_add_item()
 
     @on(Button.Pressed, "#btn-add-item")
     def _click_add_item(self) -> None:
@@ -934,9 +1255,13 @@ class IntakeApp(App):
             "price": result.get("price"),
             "stock": result.get("stock") or 1,
             "manual": 1,
+            "category_id": result.get("category_id"),
         }
         add_item(item, self.conn)
-        self.logger.info(f"Intake: manual item added '{item['title']}' ({barcode})")
+        self.logger.info(
+            f"Intake: manual item added '{item['title']}' ({barcode}) "
+            f"category={get_category_name(item['category_id'], self.conn)}"
+        )
         search_term = self.query_one("#catalog-search-input").value.strip()
         self._load_catalog_table(search_term)
         self._jump_to_barcode(barcode)
@@ -1046,6 +1371,59 @@ class IntakeApp(App):
     @on(Button.Pressed, "#btn-set-stock")
     def _click_stock(self) -> None:
         self.action_set_stock()
+
+    # ── Category action ──────────────────────────────────────
+
+    def action_set_category(self) -> None:
+        active = self._active_barcodes()
+        if not active:
+            return
+        if len(active) == 1:
+            barcode = next(iter(active))
+            row = self.conn.execute(
+                "SELECT title, category_id FROM catalog WHERE barcode = ?", (barcode,)
+            ).fetchone()
+            if not row:
+                return
+            display = row["title"]
+            current = get_category_name(row["category_id"], self.conn)
+        else:
+            display = f"{len(active)} items"
+            ids = {
+                r["category_id"] for r in self.conn.execute(
+                    f"SELECT category_id FROM catalog WHERE barcode IN "
+                    f"({','.join('?' * len(active))})", list(active)
+                )
+            }
+            current = get_category_name(ids.pop(), self.conn) if len(ids) == 1 else "mixed"
+        self.push_screen(
+            CategoryPickerModal(display, current, self._categories(), self._create_category),
+            callback=lambda choice: self._apply_category(active, choice),
+        )
+
+    def _apply_category(self, barcodes: set[str], choice) -> None:
+        if choice is None:
+            return
+        category_id = None if choice == UNSORTED else choice
+        new_name = get_category_name(category_id, self.conn)
+        changed = set_category(barcodes, category_id, self.conn)
+        for barcode, old_id in changed:
+            self.logger.info(
+                f"Intake: category changed for barcode={barcode} "
+                f"old={get_category_name(old_id, self.conn)} new={new_name}"
+            )
+        self._marked_barcodes.clear()
+        term = self.query_one("#catalog-search-input").value.strip()
+        self._load_catalog_table(term)
+        n = len(changed)
+        self.query_one("#selection-info").update(
+            f"  ✦  {n} item{'s' if n != 1 else ''} moved to {new_name}"
+        )
+        self.query_one("#catalog-table", DataTable).focus()
+
+    @on(Button.Pressed, "#btn-set-category")
+    def _click_category(self) -> None:
+        self.action_set_category()
 
     # ── Receive action ────────────────────────────────────────
 

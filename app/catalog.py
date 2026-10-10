@@ -11,6 +11,11 @@ from app.utils import load_config, get_logger, timestamp_now
 
 INHOUSE_PREFIX = "2000001"  # default; overridden by config["catalog"]["inhouse_prefix"]
 
+# Seeded categories. Ids are fixed so code can refer to Books directly; staff
+# can rename them in Admin but not delete them. NULL category_id = Unsorted.
+BOOKS_CATEGORY_ID = 1
+DEFAULT_CATEGORIES = [(1, "Books"), (2, "Cards"), (3, "Prints")]
+
 
 def get_inhouse_prefix(config: dict) -> str:
     return config.get("catalog", {}).get("inhouse_prefix", INHOUSE_PREFIX)
@@ -170,7 +175,20 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             logged_by    TEXT DEFAULT 'counter',
             payment_method TEXT
         );
+
+        CREATE TABLE IF NOT EXISTS categories (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            name        TEXT NOT NULL UNIQUE COLLATE NOCASE,
+            sort_order  INTEGER,
+            created_at  TEXT
+        );
     """)
+    for cat_id, name in DEFAULT_CATEGORIES:
+        conn.execute(
+            "INSERT OR IGNORE INTO categories (id, name, sort_order, created_at)"
+            " VALUES (?, ?, ?, ?)",
+            (cat_id, name, cat_id, timestamp_now()),
+        )
     conn.commit()
     # Migrations: add or rename columns for databases created before this version
     for migration in [
@@ -188,6 +206,40 @@ def _create_tables(conn: sqlite3.Connection) -> None:
             conn.commit()
         except Exception:
             pass  # column already exists or already renamed
+
+    # Categories (v1.7.0). The backfill runs only in the same step that adds
+    # the column, so it sorts the pre-existing catalog once and never
+    # second-guesses a category staff have set (or left Unsorted) since.
+    try:
+        conn.execute(
+            "ALTER TABLE catalog ADD COLUMN category_id INTEGER REFERENCES categories(id)"
+        )
+    except Exception:
+        pass  # column already exists
+    else:
+        _backfill_categories(conn)
+        conn.commit()
+
+
+def _backfill_categories(conn: sqlite3.Connection) -> None:
+    """Best-guess categories for items that predate them.
+
+    Real barcodes (anything outside the GS1 in-store range 20-29) are books.
+    In-house items are sorted by the "-Card" / "-Print" that staff had been
+    adding to titles; anything else is left Unsorted for staff to sort.
+    """
+    conn.execute(
+        "UPDATE catalog SET category_id = 1"
+        " WHERE category_id IS NULL AND barcode NOT GLOB '2[0-9]*'"
+    )
+    conn.execute(
+        "UPDATE catalog SET category_id = 2"
+        " WHERE category_id IS NULL AND LOWER(title) LIKE '%card%'"
+    )
+    conn.execute(
+        "UPDATE catalog SET category_id = 3"
+        " WHERE category_id IS NULL AND LOWER(title) LIKE '%print%'"
+    )
 
 
 def lookup_openlibrary(barcode: str, config: dict, logger) -> dict | None:
@@ -230,12 +282,15 @@ def get_item(barcode: str, conn: sqlite3.Connection) -> dict | None:
 def add_item(item: dict, conn: sqlite3.Connection) -> None:
     """
     Insert or update an item in the catalog.
-    item dict keys: barcode, title, author, publisher, year, price, stock, manual
+    item dict keys: barcode, title, author, publisher, year, price, stock, manual,
+    and optionally category_id (an update without one keeps the existing category)
     """
     now = timestamp_now()
     conn.execute("""
-        INSERT INTO catalog (barcode, title, author, publisher, year, price, stock, manual, added_at, updated_at)
-        VALUES (:barcode, :title, :author, :publisher, :year, :price, :stock, :manual, :added_at, :updated_at)
+        INSERT INTO catalog (barcode, title, author, publisher, year, price, stock, manual,
+                             category_id, added_at, updated_at)
+        VALUES (:barcode, :title, :author, :publisher, :year, :price, :stock, :manual,
+                :category_id, :added_at, :updated_at)
         ON CONFLICT(barcode) DO UPDATE SET
             title=excluded.title,
             author=excluded.author,
@@ -243,9 +298,121 @@ def add_item(item: dict, conn: sqlite3.Connection) -> None:
             year=excluded.year,
             price=excluded.price,
             stock=excluded.stock,
+            category_id=COALESCE(excluded.category_id, catalog.category_id),
             updated_at=excluded.updated_at
-    """, {**item, "added_at": now, "updated_at": now})
+    """, {"category_id": None, **item, "added_at": now, "updated_at": now})
     conn.commit()
+
+
+# ── Categories ───────────────────────────────────────────────────────────────
+
+def list_categories(conn: sqlite3.Connection) -> list[dict]:
+    """All categories in display order, each with its item count."""
+    rows = conn.execute("""
+        SELECT c.id, c.name, c.sort_order, COUNT(cat.id) AS item_count
+        FROM categories c
+        LEFT JOIN catalog cat ON cat.category_id = c.id
+        GROUP BY c.id
+        ORDER BY c.sort_order, c.name
+    """).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_category_name(category_id: int | None, conn: sqlite3.Connection) -> str:
+    if category_id is None:
+        return "Unsorted"
+    row = conn.execute(
+        "SELECT name FROM categories WHERE id = ?", (category_id,)
+    ).fetchone()
+    return row["name"] if row else "Unsorted"
+
+
+def _clean_category_name(name: str, conn: sqlite3.Connection,
+                         exclude_id: int | None = None) -> str:
+    name = " ".join((name or "").split())
+    if not name:
+        raise ValueError("Category name can't be blank")
+    if name.lower() in ("all", "unsorted"):
+        raise ValueError(f"'{name}' is reserved")
+    clash = conn.execute(
+        "SELECT id FROM categories WHERE name = ? COLLATE NOCASE AND id IS NOT ?",
+        (name, exclude_id),
+    ).fetchone()
+    if clash:
+        raise ValueError(f"There is already a category called '{name}'")
+    return name
+
+
+def create_category(name: str, conn: sqlite3.Connection) -> int:
+    """Create a category at the end of the list. Raises ValueError on a
+    blank, reserved or duplicate (case-insensitive) name. Returns its id."""
+    name = _clean_category_name(name, conn)
+    next_order = conn.execute(
+        "SELECT COALESCE(MAX(sort_order), 0) + 1 FROM categories"
+    ).fetchone()[0]
+    cur = conn.execute(
+        "INSERT INTO categories (name, sort_order, created_at) VALUES (?, ?, ?)",
+        (name, next_order, timestamp_now()),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def rename_category(category_id: int, name: str, conn: sqlite3.Connection) -> str:
+    name = _clean_category_name(name, conn, exclude_id=category_id)
+    conn.execute("UPDATE categories SET name = ? WHERE id = ?", (name, category_id))
+    conn.commit()
+    return name
+
+
+def delete_category(category_id: int, conn: sqlite3.Connection) -> int:
+    """Delete a staff-created category; its items become Unsorted.
+    The seeded categories can't be deleted. Returns the number of items moved."""
+    if category_id in {cid for cid, _ in DEFAULT_CATEGORIES}:
+        raise ValueError("Books, Cards and Prints can be renamed but not deleted")
+    moved = conn.execute(
+        "UPDATE catalog SET category_id = NULL, updated_at = ? WHERE category_id = ?",
+        (timestamp_now(), category_id),
+    ).rowcount
+    conn.execute("DELETE FROM categories WHERE id = ?", (category_id,))
+    conn.commit()
+    return moved
+
+
+def move_category(category_id: int, direction: int, conn: sqlite3.Connection) -> None:
+    """Swap a category with its neighbour in display order (direction -1 or +1)."""
+    ids = [c["id"] for c in list_categories(conn)]
+    if category_id not in ids:
+        return
+    i = ids.index(category_id)
+    j = i + direction
+    if not 0 <= j < len(ids):
+        return
+    ids[i], ids[j] = ids[j], ids[i]
+    for order, cid in enumerate(ids, start=1):
+        conn.execute("UPDATE categories SET sort_order = ? WHERE id = ?", (order, cid))
+    conn.commit()
+
+
+def set_category(barcodes, category_id: int | None,
+                 conn: sqlite3.Connection) -> list[tuple[str, int | None]]:
+    """Set the category of one or more items (None = Unsorted).
+    Returns [(barcode, old_category_id)] for items that actually changed."""
+    now = timestamp_now()
+    changed = []
+    for barcode in barcodes:
+        row = conn.execute(
+            "SELECT category_id FROM catalog WHERE barcode = ?", (barcode,)
+        ).fetchone()
+        if row is None or row["category_id"] == category_id:
+            continue
+        conn.execute(
+            "UPDATE catalog SET category_id = ?, updated_at = ? WHERE barcode = ?",
+            (category_id, now, barcode),
+        )
+        changed.append((barcode, row["category_id"]))
+    conn.commit()
+    return changed
 
 
 def decrement_stock(barcode: str, conn: sqlite3.Connection, qty: int = 1) -> int:
@@ -295,6 +462,7 @@ def resolve_barcode(barcode: str, conn: sqlite3.Connection,
         item.setdefault("price", None)
         item.setdefault("stock", 1)
         item.setdefault("manual", 0)
+        item.setdefault("category_id", BOOKS_CATEGORY_ID)
         add_item(item, conn)
         return item
 
