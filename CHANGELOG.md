@@ -1,5 +1,21 @@
 # Changelog
 
+## v1.8.0 — 2026-10-16
+
+- The non-barcoded buttons on the counter (postcards, tour admission,
+  offers like the card bundle) can now be changed by staff in Admin →
+  **6 Counter items**: pick a slot, type a name and price, Save. Before
+  this, changing one meant hand-editing `config/settings.yaml` on the till,
+  where one wrong space stops the till starting. Every change is logged
+  with the old and new name and price.
+- The items now live in the database (new `counter_items` table, added
+  automatically on first start). The existing `non_isbn_items` from
+  `settings.yaml` are copied in once and edited in Admin from then on.
+  Changing that list afterwards has no effect.
+- The number of buttons is set per till with `counter_item_slots` (1–9,
+  default 4), since it depends on the counter screen's size. Empty slots
+  don't show on the counter, and the other buttons keep their numbers.
+
 ## v1.7.3 — 2026-10-09
 
 - When a sale happens that contradicts what the system believes about

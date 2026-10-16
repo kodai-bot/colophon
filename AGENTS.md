@@ -72,7 +72,7 @@ Before configuring, get these from the human:
 
 1. **Shop name.**
 2. **Admin PIN.** Never leave the example `0000`, and never make one up without telling the human what it is.
-3. **Non-barcoded counter items**, with prices (up to 4 shortcut keys; a blank price means "ask at counter").
+3. **Non-barcoded counter items**, with prices (a blank price means "ask at counter"), and how many shortcut slots fit on the counter screen (`counter_item_slots`, 1–9, default 4). The `non_isbn_items` list only seeds the database on first run. After that, staff edit the items in Admin → 6 Counter items.
 4. **Low-stock warning threshold.**
 5. **Office share**, if any: server, share name, and who will supply the credentials. You don't need to see the password; the human can type it into the credentials file.
 6. **In-house barcode prefix**, which must be within the GS1 in-store range. The code refuses anything else.

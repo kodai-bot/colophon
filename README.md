@@ -141,8 +141,10 @@ office_sync:
   mount_path: "/mnt/office"
   report_subdir: "bookshop_reports"
 
-non_isbn_items:
-  - name: "Postcard"
+counter_item_slots: 4   # counter shortcut buttons on this till (1-9)
+
+non_isbn_items:         # starting counter items, read once on first run;
+  - name: "Postcard"    # edit them afterwards in Admin → 6 Counter items
     price: 4.00
   - name: "Tour admission"
     price:              # Leave blank = ask at counter

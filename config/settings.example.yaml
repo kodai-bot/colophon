@@ -38,7 +38,13 @@ office_sync:
 stock:
   low_stock_threshold: 2             # flag when copies drop to this
 
-# Non-ISBN items selectable by number key at counter
+# How many shortcut buttons (number keys 1-9) the counter shows for
+# non-barcoded items. Depends on the counter screen's size, so set per machine.
+counter_item_slots: 4
+
+# Non-barcoded items, by number key at the counter. Read ONCE, the first time
+# the app starts (v1.8.0+); after that they're edited in Admin → 6 Counter
+# items and changing this list has no effect.
 # Leave price blank to prompt staff to enter it at time of sale
 non_isbn_items:
   - name: "Postcard"

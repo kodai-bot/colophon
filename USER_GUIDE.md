@@ -16,7 +16,7 @@ The system has four modes, all launched from the same startup screen:
 | **Counter** | All staff | Scan items for sale, take payment |
 | **Intake** | Stock volunteers / managers | Browse the catalog, receive deliveries, correct prices and stock, add new items |
 | **Payments** | Anyone | Log sundry payments — room hire, memberships, event bookings, etc. |
-| **Admin** | Managers | Sales log and voids, send reports, sales tally, fix orphaned transactions |
+| **Admin** | Managers | Sales log and voids, send reports, sales tally, fix orphaned transactions, categories, counter item buttons |
 
 ---
 
@@ -47,13 +47,15 @@ This is the screen staff use all day. The barcode scanner works like a keyboard 
 
 Items with in-house barcodes (postcards, tour tickets, etc.) are scanned exactly like books — just point and scan. They are registered in the catalog and tracked the same way.
 
-Items without barcodes can be selected by pressing a number key or clicking the button on the left panel:
+Items without barcodes can be selected by pressing a number key or clicking the button on the left panel. For example:
 
 | Key | Item | Price |
 |---|---|---|
 | **1** | Postcard | €4.00 — logs immediately |
 | **2** | Postcard (large) | €6.00 — logs immediately |
 | **3** | Tour admission | Variable — a price prompt appears |
+
+The buttons and prices are set in Admin → **[6] Counter items**. Each button keeps its number even if a slot above it is empty.
 
 For **Tour admission**: a box appears asking for the amount. Type the price for one person and press **Enter**. Repeat for each person in the group (press **3** again for each).
 
@@ -197,6 +199,12 @@ Lists transactions that were recorded without a payment method (for example, if 
 
 Lists the item categories and how many items each holds. Highlight one to **Rename** it (type the new name, then Enter or click Rename), move it **Up** or **Down** to change the tab order in Intake, or **Delete** it. Deleting a category that still has items asks you to press Delete a second time, and its items move to Unsorted. Books, Cards and Prints can be renamed but not deleted. New categories are created in Intake.
 
+### [6] Counter items
+
+Sets the non-barcoded shortcut buttons on the counter (offers, tour admission, anything without a barcode). Highlight a slot and its current name and price fill the form. Change them and press **Save** (or Enter). Leave the price blank to have staff type the price at the counter each time. **Up** and **Down** move an item to a different number key. **Clear** empties a slot (press it twice to confirm). Empty slots don't show on the counter.
+
+Changes appear the next time someone opens Counter mode, with no restart needed. Past sales keep the name and price they were sold under. How many slots there are depends on the till's screen size. It's set by `counter_item_slots` in `config/settings.yaml` (1–9, default 4).
+
 Press **Esc** to return to the menu, or to the launcher from the main menu.
 
 ---
@@ -256,8 +264,10 @@ office_sync:
   mount_path: "/mnt/office"    # Where the office share is mounted
   report_subdir: "bookshop_reports"
 
-non_isbn_items:
-  - name: "Postcard"
+counter_item_slots: 4          # Counter shortcut buttons on this till (1-9)
+
+non_isbn_items:                # Starting counter items, read once on first run;
+  - name: "Postcard"           # edit them afterwards in Admin → [6] Counter items
     price: 4.00
   - name: "Postcard (large)"
     price: 6.00
@@ -402,6 +412,8 @@ PIN protected. Price changes, stock corrections, and adding items now live in **
 | **2** | Send report — generate and send CSV reports to the office share |
 | **3** | Sales tally — totals by item for today / this month / all time, with export |
 | **4** | Fix orphaned — assign a missing cash/card payment method to old transactions (Cash/Card are buttons here, not keys) |
+| **5** | Categories — rename, reorder or delete item categories |
+| **6** | Counter items — change the non-barcoded buttons and prices on the counter |
 | **V** | Confirm void (in the void-confirmation popup) |
 | **Esc** | Back to menu / launcher, or cancel the current popup |
 | **Ctrl+Q** | Quit the whole program (from any mode) |
