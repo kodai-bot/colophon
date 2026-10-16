@@ -272,7 +272,11 @@ class NonIsbnPanel(Vertical):
 
     def compose(self) -> ComposeResult:
         yield Static(f"  {self._heading}", classes="nonisbn-heading")
+        # Empty slots get no button, but filled ones keep their slot number
+        # as their key, so a spare slot doesn't renumber the others.
         for i, item in enumerate(self._items, 1):
+            if not item.get("name"):
+                continue
             price = f"€{item['price']:.2f}" if item.get("price") else "enter price"
             yield Button(
                 f" [{i}]  {item['name']:<20}  {price}",
@@ -281,8 +285,9 @@ class NonIsbnPanel(Vertical):
             )
 
     def get_item(self, index: int) -> dict | None:
-        """Return item dict for a given 1-based index (key press or button)."""
-        if 1 <= index <= len(self._items):
+        """Return item dict for a given 1-based slot (key press or button),
+        or None if the slot is empty or doesn't exist."""
+        if 1 <= index <= len(self._items) and self._items[index - 1].get("name"):
             return self._items[index - 1]
         return None
 

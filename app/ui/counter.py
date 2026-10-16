@@ -15,11 +15,15 @@ from textual.binding import Binding
 from textual.screen import ModalScreen
 from textual import on
 from textual.timer import Timer
+from dataclasses import replace
 from datetime import datetime
 import time
 
 from app.utils import load_config, get_logger
-from app.catalog import get_db, resolve_barcode, decrement_stock, normalize_barcode, get_inhouse_prefix
+from app.catalog import (
+    get_db, resolve_barcode, decrement_stock, normalize_barcode, get_inhouse_prefix,
+    list_counter_items, counter_slot_count, MAX_COUNTER_SLOTS,
+)
 from app.logger import record_sale, void_last_sale
 from app.printing import format_receipt, print_receipt, open_drawer
 from app.payment_methods import PAYMENT_METHODS
@@ -301,10 +305,10 @@ class CounterApp(App):
         Binding("ctrl+t", "pay", "Subtotal / Pay", show=True),
         Binding("ctrl+d", "discount", "Discount", show=True),
         Binding("ctrl+n", "no_sale", "No sale", show=True),
-        Binding("1", "select_item('1')", "Item 1", show=True),
-        Binding("2", "select_item('2')", "Item 2", show=True),
-        Binding("3", "select_item('3')", "Item 3", show=True),
-        Binding("4", "select_item('4')", "Item 4", show=True),
+    ] + [
+        Binding(str(n), f"select_item('{n}')", f"Item {n}", show=False)
+        for n in range(1, MAX_COUNTER_SLOTS + 1)
+    ] + [
         Binding("ctrl+q", "quit", "Quit", show=True),
     ]
 
@@ -313,7 +317,7 @@ class CounterApp(App):
         self.config = load_config()
         self.logger = get_logger("counter", self.config)
         self.conn = get_db(self.config)
-        self.non_isbn_items = self.config.get("non_isbn_items", [])
+        self.non_isbn_items = list_counter_items(self.conn, counter_slot_count(self.config))
         self.low_threshold = self.config["stock"]["low_stock_threshold"]
         self._inhouse_prefix = get_inhouse_prefix(self.config)
         self._ui = self.config.get("ui", {})
@@ -381,7 +385,11 @@ class CounterApp(App):
         self.query_one(DailyManifest).update_totals(
             self._daily_items, self._daily_revenue, self._daily_totals
         )
-        self.query_one(HintBar).update_from(self.BINDINGS)
+        # Only list the number keys for slots that have an item in them.
+        filled = {str(i["slot"]) for i in self.non_isbn_items if i["name"]}
+        self.query_one(HintBar).update_from([
+            replace(b, show=True) if b.key in filled else b for b in self.BINDINGS
+        ])
         self._quote_timer = self.set_interval(60, self._rotate_quote)
         self._flavor_timer = self.set_interval(20, self._rotate_flavor)
 
