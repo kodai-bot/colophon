@@ -124,6 +124,7 @@ def get_db(config: dict) -> sqlite3.Connection:
     conn.execute("PRAGMA busy_timeout=5000")
     conn.execute("PRAGMA foreign_keys=ON")
     _create_tables(conn)
+    _create_counter_items(conn, config.get("non_isbn_items") or [])
     return conn
 
 
@@ -413,6 +414,124 @@ def set_category(barcodes, category_id: int | None,
         changed.append((barcode, row["category_id"]))
     conn.commit()
     return changed
+
+
+# ── Counter items (non-barcoded shortcut buttons) ────────────────────────────
+
+MAX_COUNTER_SLOTS = 9          # number keys 1-9 at the counter
+DEFAULT_COUNTER_SLOTS = 4
+COUNTER_NAME_MAX = 30
+
+
+def counter_slot_count(config: dict) -> int:
+    """How many shortcut slots this till shows (config, clamped to 1-9).
+    Per machine, because it depends on the counter screen's size."""
+    try:
+        n = int(config.get("counter_item_slots") or DEFAULT_COUNTER_SLOTS)
+    except (TypeError, ValueError):
+        n = DEFAULT_COUNTER_SLOTS
+    return max(1, min(MAX_COUNTER_SLOTS, n))
+
+
+def _create_counter_items(conn: sqlite3.Connection, seed_items: list) -> None:
+    """Create the counter_items table (v1.8.0). Counter items used to live in
+    settings.yaml (non_isbn_items); they are copied in once, when the table is
+    first created, and edited in Admin from then on. Seeding only on creation
+    means a slot staff have cleared is never refilled from the old config."""
+    exists = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'counter_items'"
+    ).fetchone()
+    if exists:
+        return
+    conn.execute("""
+        CREATE TABLE counter_items (
+            slot        INTEGER PRIMARY KEY,
+            name        TEXT NOT NULL,
+            price       REAL,
+            updated_at  TEXT
+        )
+    """)
+    for slot, item in enumerate(seed_items[:MAX_COUNTER_SLOTS], start=1):
+        name = " ".join(str((item or {}).get("name") or "").split())
+        if not name:
+            continue
+        conn.execute(
+            "INSERT INTO counter_items (slot, name, price, updated_at) VALUES (?, ?, ?, ?)",
+            (slot, name[:COUNTER_NAME_MAX], item.get("price"), timestamp_now()),
+        )
+    conn.commit()
+
+
+def list_counter_items(conn: sqlite3.Connection, slots: int) -> list[dict]:
+    """One dict per slot 1..slots: {slot, name, price}. Empty slots have
+    name None. Items stored beyond `slots` are kept but not shown."""
+    rows = {r["slot"]: r for r in conn.execute(
+        "SELECT slot, name, price FROM counter_items WHERE slot <= ?", (slots,)
+    )}
+    return [
+        {"slot": n, "name": rows[n]["name"] if n in rows else None,
+         "price": rows[n]["price"] if n in rows else None}
+        for n in range(1, slots + 1)
+    ]
+
+
+def parse_counter_price(raw: str) -> float | None:
+    """'' -> None (staff enter the price at the counter). Accepts '20',
+    '20.00', '€20', '20,50'. Raises ValueError on anything else."""
+    raw = (raw or "").strip().lstrip("€").strip().replace(",", ".")
+    if not raw:
+        return None
+    try:
+        price = round(float(raw), 2)
+    except ValueError:
+        raise ValueError(f"'{raw}' isn't a price — use e.g. 20 or 4.50")
+    if price <= 0 or price > 10000:
+        raise ValueError("Price must be above €0 (leave blank to enter at the counter)")
+    return price
+
+
+def set_counter_item(slot: int, name: str, price: float | None,
+                     conn: sqlite3.Connection) -> dict | None:
+    """Fill or change a slot. Returns the old {name, price}, or None if the
+    slot was empty. Raises ValueError on a bad slot or name."""
+    if not 1 <= slot <= MAX_COUNTER_SLOTS:
+        raise ValueError(f"No slot {slot}")
+    name = " ".join((name or "").split())
+    if not name:
+        raise ValueError("Name can't be blank (use Clear to empty a slot)")
+    if len(name) > COUNTER_NAME_MAX:
+        raise ValueError(f"Name is too long — {COUNTER_NAME_MAX} characters at most")
+    old = conn.execute(
+        "SELECT name, price FROM counter_items WHERE slot = ?", (slot,)
+    ).fetchone()
+    conn.execute("""
+        INSERT INTO counter_items (slot, name, price, updated_at) VALUES (?, ?, ?, ?)
+        ON CONFLICT(slot) DO UPDATE SET
+            name = excluded.name, price = excluded.price, updated_at = excluded.updated_at
+    """, (slot, name, price, timestamp_now()))
+    conn.commit()
+    return dict(old) if old else None
+
+
+def clear_counter_item(slot: int, conn: sqlite3.Connection) -> dict | None:
+    """Empty a slot. Returns what was in it, or None if already empty."""
+    old = conn.execute(
+        "SELECT name, price FROM counter_items WHERE slot = ?", (slot,)
+    ).fetchone()
+    conn.execute("DELETE FROM counter_items WHERE slot = ?", (slot,))
+    conn.commit()
+    return dict(old) if old else None
+
+
+def swap_counter_slots(a: int, b: int, conn: sqlite3.Connection) -> None:
+    """Swap the contents of two slots (either may be empty)."""
+    if not (1 <= a <= MAX_COUNTER_SLOTS and 1 <= b <= MAX_COUNTER_SLOTS) or a == b:
+        return
+    # Park slot a at 0 so the primary key never clashes mid-swap.
+    conn.execute("UPDATE counter_items SET slot = 0 WHERE slot = ?", (a,))
+    conn.execute("UPDATE counter_items SET slot = ? WHERE slot = ?", (a, b))
+    conn.execute("UPDATE counter_items SET slot = ? WHERE slot = 0", (b,))
+    conn.commit()
 
 
 def decrement_stock(barcode: str, conn: sqlite3.Connection, qty: int = 1) -> int:
