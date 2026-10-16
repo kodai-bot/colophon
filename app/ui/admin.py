@@ -22,6 +22,8 @@ from app.utils import load_config, get_logger, format_date, parse_date_str, is_m
 from app.catalog import (
     get_db, get_inhouse_prefix, list_categories, rename_category, delete_category,
     move_category, DEFAULT_CATEGORIES,
+    list_counter_items, counter_slot_count, parse_counter_price, set_counter_item,
+    clear_counter_item, swap_counter_slots,
 )
 from app.summary import write_daily_report, get_daily_sales, get_sales_summary, get_sales_tally, write_tally_csv
 from app.ui.quotes import get_quote_display
@@ -268,17 +270,17 @@ DataTable {
     border-top: solid #1a1a4a;
 }
 
-#category-panel {
+#category-panel, #counter-panel {
     height: 1fr;
     overflow-y: auto;
 }
 
-#category-actions {
+#category-actions, #counter-actions {
     height: 3;
     margin: 1 1 0 1;
 }
 
-#category-rename-input {
+#category-rename-input, #counter-name-input, #counter-price-input {
     width: 32;
     background: #0f0f1a;
     border: solid #2a2a5a;
@@ -299,16 +301,18 @@ DataTable {
 .category-btn:hover { background: #0f0f2f; }
 .category-btn:focus { border: solid #d4af37; color: #d4af37; }
 
-#btn-category-delete { border: solid #aa4a4a; color: #aa6a6a; }
+#counter-price-input { width: 14; }
 
-#category-result {
+#btn-category-delete, #btn-counter-clear { border: solid #aa4a4a; color: #aa6a6a; }
+
+#category-result, #counter-result {
     color: #4aaa7a;
     padding: 0 2;
     height: auto;
     margin: 0 1 0 1;
 }
 
-#category-help {
+#category-help, #counter-help {
     padding: 0 2;
     height: auto;
     margin: 0 1 0 1;
@@ -481,6 +485,7 @@ class AdminApp(App):
         Binding("3", "menu_tally", "Sales tally", show=True),
         Binding("4", "menu_orphans", "Fix orphaned", show=True),
         Binding("5", "menu_categories", "Categories", show=True),
+        Binding("6", "menu_counter_items", "Counter items", show=True),
         Binding("ctrl+q", "quit", "Quit", show=True),
     ]
 
@@ -501,6 +506,10 @@ class AdminApp(App):
         self._category_table_ready = False
         self._category_selected_id: int | None = None
         self._category_delete_armed: int | None = None
+        self._counter_table_ready = False
+        self._counter_slots = counter_slot_count(self.config)
+        self._counter_selected_slot: int | None = None
+        self._counter_clear_armed: int | None = None
         self._report_date: str = format_date()
 
     def compose(self) -> ComposeResult:
@@ -511,7 +520,7 @@ class AdminApp(App):
 
         # Main menu
         with Vertical(id="main-menu"):
-            yield Static("Select an option (click or press 1 – 5):", classes="section-heading")
+            yield Static("Select an option (click or press 1 – 6):", classes="section-heading")
             yield Button(
                 "[1]  View today's sales log  —  See all transactions for today",
                 classes="menu-item", id="menu-sales",
@@ -531,6 +540,10 @@ class AdminApp(App):
             yield Button(
                 "[5]  Categories  —  Rename, reorder or delete item categories",
                 classes="menu-item", id="menu-categories",
+            )
+            yield Button(
+                "[6]  Counter items  —  Change the non-barcoded buttons and prices on the counter",
+                classes="menu-item", id="menu-counter-items",
             )
 
         # Sales log panel
@@ -586,6 +599,25 @@ class AdminApp(App):
                 id="category-help",
             )
 
+        # Counter items panel
+        with Vertical(id="counter-panel"):
+            yield Static("COUNTER ITEMS", classes="section-heading")
+            yield DataTable(id="counter-table", cursor_type="row")
+            with Horizontal(id="counter-actions"):
+                yield Input(placeholder="Name", id="counter-name-input")
+                yield Input(placeholder="Price €", id="counter-price-input")
+                yield Button("Save", id="btn-counter-save", classes="category-btn", disabled=True)
+                yield Button("↑ Up", id="btn-counter-up", classes="category-btn", disabled=True)
+                yield Button("↓ Down", id="btn-counter-down", classes="category-btn", disabled=True)
+                yield Button("✗ Clear", id="btn-counter-clear", classes="category-btn", disabled=True)
+            yield Static("", id="counter-result")
+            yield Static(
+                "  Pick a slot, type a name and price, then Save.  Leave the price blank and "
+                "staff will be asked for it at the counter (e.g. tour admission).  Empty slots "
+                "don't show on the counter.  Changes show next time someone opens Counter.",
+                id="counter-help",
+            )
+
         # Report panel
         with Vertical(id="report-panel"):
             yield Static("SEND REPORT", classes="section-heading")
@@ -614,7 +646,7 @@ class AdminApp(App):
             self.exit()
 
     _ALL_PANELS = ("main-menu", "sales-panel", "tally-panel", "orphan-panel",
-                   "category-panel", "report-panel")
+                   "category-panel", "counter-panel", "report-panel")
 
     def _hide_all_panels(self) -> None:
         for panel_id in self._ALL_PANELS:
@@ -1117,6 +1149,124 @@ class AdminApp(App):
     def _click_categories(self) -> None:
         self.action_menu_categories()
 
+    # ── Counter items ─────────────────────────────────────────
+
+    def action_menu_counter_items(self) -> None:
+        if not self._counter_table_ready:
+            table = self.query_one("#counter-table", DataTable)
+            table.add_columns("Key", "Name", "Price")
+            self._counter_table_ready = True
+        self._load_counter_table()
+        self._show_panel("counter-panel")
+        self._mode = "counter_items"
+        self.query_one("#counter-table").focus()
+
+    @staticmethod
+    def _counter_label(name: str | None, price: float | None) -> str:
+        if not name:
+            return "(empty)"
+        return f"'{name}' " + (f"€{price:.2f}" if price else "(price at counter)")
+
+    def _load_counter_table(self, keep_slot: int | None = None) -> None:
+        table = self.query_one("#counter-table", DataTable)
+        table.clear()
+        self._counter_clear_armed = None
+        for item in list_counter_items(self.conn, self._counter_slots):
+            if not item["name"]:
+                name, price = "(empty)", ""
+            else:
+                name = item["name"]
+                price = f"€{item['price']:.2f}" if item["price"] else "enter at counter"
+            table.add_row(str(item["slot"]), name, price, key=str(item["slot"]))
+        if keep_slot is not None:
+            try:
+                table.move_cursor(row=table.get_row_index(str(keep_slot)))
+            except Exception:
+                pass
+
+    @on(DataTable.RowHighlighted, "#counter-table")
+    def _counter_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
+        key = str(event.row_key.value) if event.row_key else ""
+        slot = int(key) if key.isdigit() else None
+        self._counter_selected_slot = slot
+        self._counter_clear_armed = None
+        item = next((i for i in list_counter_items(self.conn, self._counter_slots)
+                     if i["slot"] == slot), None)
+        # Pre-fill the form with the slot's current contents to edit in place
+        self.query_one("#counter-name-input", Input).value = (item or {}).get("name") or ""
+        price = (item or {}).get("price")
+        self.query_one("#counter-price-input", Input).value = f"{price:.2f}" if price else ""
+        filled = bool(item and item["name"])
+        self.query_one("#btn-counter-save", Button).disabled = slot is None
+        self.query_one("#btn-counter-up", Button).disabled = slot is None or slot == 1
+        self.query_one("#btn-counter-down", Button).disabled = (
+            slot is None or slot == self._counter_slots)
+        self.query_one("#btn-counter-clear", Button).disabled = not filled
+
+    @on(Button.Pressed, "#btn-counter-save")
+    @on(Input.Submitted, "#counter-name-input")
+    @on(Input.Submitted, "#counter-price-input")
+    def _save_counter_item(self) -> None:
+        slot = self._counter_selected_slot
+        if slot is None:
+            return
+        name = self.query_one("#counter-name-input", Input).value
+        try:
+            price = parse_counter_price(self.query_one("#counter-price-input", Input).value)
+            old = set_counter_item(slot, name, price, self.conn)
+        except ValueError as e:
+            self.query_one("#counter-result").update(f"⚠  {e}")
+            return
+        new = self._counter_label(" ".join(name.split()), price)
+        was = self._counter_label(*(old.values() if old else (None, None)))
+        self.logger.info(f"Admin: counter item slot={slot} old={was} new={new}")
+        self._load_counter_table(keep_slot=slot)
+        self.query_one("#counter-table").focus()
+        self.query_one("#counter-result").update(f"✦  Key {slot}: {was} → {new}")
+
+    def _move_counter_item(self, direction: int) -> None:
+        slot = self._counter_selected_slot
+        if slot is None:
+            return
+        target = slot + direction
+        if not 1 <= target <= self._counter_slots:
+            return
+        swap_counter_slots(slot, target, self.conn)
+        self.logger.info(f"Admin: counter items swapped slots {slot} and {target}")
+        self._load_counter_table(keep_slot=target)
+        self.query_one("#counter-table").focus()
+
+    @on(Button.Pressed, "#btn-counter-up")
+    def _click_counter_up(self) -> None:
+        self._move_counter_item(-1)
+
+    @on(Button.Pressed, "#btn-counter-down")
+    def _click_counter_down(self) -> None:
+        self._move_counter_item(1)
+
+    @on(Button.Pressed, "#btn-counter-clear")
+    def _clear_counter_item(self) -> None:
+        slot = self._counter_selected_slot
+        if slot is None:
+            return
+        if self._counter_clear_armed != slot:
+            # Two presses, so one stray click can't take a button off the counter.
+            self._counter_clear_armed = slot
+            self.query_one("#counter-result").update(
+                f"⚠  Key {slot} will be removed from the counter — press Clear again to confirm"
+            )
+            return
+        old = clear_counter_item(slot, self.conn)
+        was = self._counter_label(*(old.values() if old else (None, None)))
+        self.logger.info(f"Admin: counter item slot={slot} old={was} new=(empty)")
+        self._load_counter_table(keep_slot=slot)
+        self.query_one("#counter-table").focus()
+        self.query_one("#counter-result").update(f"✦  Key {slot} cleared (was {was})")
+
+    @on(Button.Pressed, "#menu-counter-items")
+    def _click_counter_items(self) -> None:
+        self.action_menu_counter_items()
+
     @on(Button.Pressed, "#send-report-btn")
     def _send_report(self) -> None:
         raw = self.query_one("#report-date-input", Input).value
@@ -1166,6 +1316,8 @@ class AdminApp(App):
             self.query_one("#orphan-count").update("")
             self.query_one("#category-result").update("")
             self._category_delete_armed = None
+            self.query_one("#counter-result").update("")
+            self._counter_clear_armed = None
             self._sales_selected_id = None
             self._orphan_selected_txn = None
             try:
