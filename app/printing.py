@@ -2,6 +2,9 @@
 """
 printing.py - ESC/POS receipt formatting and printing via CUPS.
 
+Used by Counter mode (sale receipts) and Payments mode (room hire,
+membership etc. receipts).
+
 Best-effort: printing failures are logged and swallowed, never raised,
 since by the time this is called the sale is already committed to the DB.
 """
@@ -56,16 +59,13 @@ def format_line_item(title: str, price: float, quantity: int, width: int) -> str
     return title + "\n" + price_str.rjust(width)
 
 
-def format_receipt(
-    items: list[tuple[str, float, int]],
-    total: float,
-    payment_method: str,
-    txn_id: str,
-    config: dict,
-) -> bytes:
-    """Build the full ESC/POS byte sequence for a Counter-mode receipt."""
+def _build_receipt(body_lines: list[str], payment_method: str, config: dict) -> bytes:
+    """
+    Wrap receipt body lines in the parts every receipt shares: the drawer
+    kick (cash only, when enabled), the shop name header, the footer line
+    and the paper cut.
+    """
     printer_cfg = config.get("printer", {})
-    width = printer_cfg.get("paper_width_chars", 42)
     cut_mode = printer_cfg.get("cut_mode", "partial")
     footer = printer_cfg.get("footer_line", "")
     shop_name = config.get("shop", {}).get("name", "Shop")
@@ -73,12 +73,7 @@ def format_receipt(
     kick_drawer = bool(method and method.kicks_drawer) and printer_cfg.get("cash_drawer", False)
     drawer_pin = printer_cfg.get("drawer_pin", 2)
 
-    body_lines = [datetime.now().strftime("%a %d %b %Y  %H:%M"), ""]
-    for title, price, quantity in items:
-        body_lines.append(format_line_item(title, price, quantity, width))
-    body_lines.append("-" * width)
-    body_lines.append(format_line_item("TOTAL", total, 1, width))
-    body_lines.append(f"Paid: {payment_method.upper()}")
+    body_lines = list(body_lines)
     if footer:
         body_lines.append("")
         body_lines.append(footer)
@@ -96,6 +91,59 @@ def format_receipt(
     out += b"\n\n\n"
     out += CUT_COMMANDS.get(cut_mode, CUT_COMMANDS["partial"])
     return bytes(out)
+
+
+def format_receipt(
+    items: list[tuple[str, float, int]],
+    total: float,
+    payment_method: str,
+    txn_id: str,
+    config: dict,
+) -> bytes:
+    """Build the full ESC/POS byte sequence for a Counter-mode receipt."""
+    width = config.get("printer", {}).get("paper_width_chars", 42)
+
+    body_lines = [datetime.now().strftime("%a %d %b %Y  %H:%M"), ""]
+    for title, price, quantity in items:
+        body_lines.append(format_line_item(title, price, quantity, width))
+    body_lines.append("-" * width)
+    body_lines.append(format_line_item("TOTAL", total, 1, width))
+    body_lines.append(f"Paid: {payment_method.upper()}")
+    return _build_receipt(body_lines, payment_method, config)
+
+
+def format_payment_receipt(
+    payment_type: str,
+    payer_name: str,
+    amount: float,
+    payment_method: str,
+    payment_id: int,
+    config: dict,
+    reference: str | None = None,
+    notes: str | None = None,
+) -> bytes:
+    """
+    Build the full ESC/POS byte sequence for a Payments-mode receipt
+    (room hire, membership, etc.). Numbered P-<id> from the payments table,
+    so it can't be mistaken for a Counter transaction.
+    """
+    width = config.get("printer", {}).get("paper_width_chars", 42)
+
+    body_lines = [
+        datetime.now().strftime("%a %d %b %Y  %H:%M"),
+        f"Receipt no. P-{payment_id}",
+        "",
+        format_line_item(payment_type, amount, 1, width),
+        f"Received from: {payer_name}",
+    ]
+    if reference:
+        body_lines.append(f"Ref: {reference}")
+    if notes:
+        body_lines.append(notes)
+    body_lines.append("-" * width)
+    body_lines.append(format_line_item("TOTAL", amount, 1, width))
+    body_lines.append(f"Paid: {payment_method.upper()}")
+    return _build_receipt(body_lines, payment_method, config)
 
 
 class Printer(Protocol):

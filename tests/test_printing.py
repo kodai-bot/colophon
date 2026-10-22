@@ -9,7 +9,7 @@ in every print_receipt test.
 import subprocess
 import pytest
 from app.printing import (
-    format_currency, format_line_item, format_receipt, print_receipt,
+    format_currency, format_line_item, format_receipt, format_payment_receipt, print_receipt,
     INIT, SELECT_CODEPAGE_PC858, CUT_COMMANDS, CODEPAGE, DRAWER_KICK, open_drawer,
     CupsEscPosPrinter,
 )
@@ -293,3 +293,45 @@ def test_open_drawer_delegates_to_injected_printer(config):
     fake = _FakePrinter()
     assert open_drawer(config, StubLogger(), printer=fake) is True
     assert fake.calls == [(INIT + DRAWER_KICK[2], "Drawer kick")]
+
+
+# ── format_payment_receipt (Payments mode) ──────────────────────
+
+def _payment(config, method="cash", **kw):
+    return format_payment_receipt("Room Hire", "Jane Smith", 50.0, method, 123, config, **kw)
+
+
+def test_payment_receipt_contents(config):
+    text = _payment(config).decode(CODEPAGE)
+    assert "TEST SHOP" in text
+    assert "Receipt no. P-123" in text
+    assert "Room Hire" in text
+    assert "Received from: Jane Smith" in text
+    assert "€50.00" in text
+    assert "Paid: CASH" in text
+    assert "Thanks!" in text
+
+
+def test_payment_receipt_reference_and_notes_only_when_given(config):
+    bare = _payment(config).decode(CODEPAGE)
+    assert "Ref:" not in bare
+    full = _payment(config, reference="B-4471", notes="Hall, Sat 7pm").decode(CODEPAGE)
+    assert "Ref: B-4471" in full
+    assert "Hall, Sat 7pm" in full
+
+
+def test_payment_receipt_cash_kicks_drawer_when_enabled(config):
+    config["printer"]["cash_drawer"] = True
+    assert _payment(config, "cash").startswith(INIT + DRAWER_KICK[2])
+
+
+def test_payment_receipt_card_never_kicks_drawer(config):
+    config["printer"]["cash_drawer"] = True
+    out = _payment(config, "card")
+    assert not any(k in out for k in DRAWER_KICK.values())
+
+
+@pytest.mark.parametrize("cut_mode", ["partial", "full"])
+def test_payment_receipt_ends_with_configured_cut(config, cut_mode):
+    config["printer"]["cut_mode"] = cut_mode
+    assert _payment(config).endswith(CUT_COMMANDS[cut_mode])

@@ -1,5 +1,20 @@
 # Changelog
 
+## v1.9.0 — 2026-10-22
+
+- Payments mode (room hire, memberships, event bookings, donations) now
+  prints a receipt, as the counter does. A **Print receipt** tick-box is
+  ticked by default; untick it to skip the receipt for that one payment.
+  Receipts are numbered P-<number> so they can't be mistaken for counter
+  sales. The tick-box only appears on tills with the printer switched on.
+- A cash payment in Payments mode now opens the cash drawer. Before this,
+  staff had to use the drawer key or No sale on the counter.
+- Fixed: after recording a payment, Payments mode crashed back to the
+  launcher instead of clearing the form for the next entry. The payment
+  itself was always saved. This started when the till's Textual library
+  was updated (late August 2026), which changed how an empty drop-down is
+  written.
+
 ## v1.8.0 — 2026-10-16
 
 - The non-barcoded buttons on the counter (postcards, tour admission,
