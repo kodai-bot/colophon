@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.9.1 — 2026-10-22
+
+- Payments mode now shows a clear green **✓ Payment logged** line just
+  above the buttons after each payment, with the type, amount, and
+  Cash/Card, and whether the receipt printed. Before this, the only sign
+  was a dim line at the bottom of the screen that could be out of view, so
+  staff weren't sure the payment had gone through. (Payments don't appear
+  in the counter's sales list, which is correct, and made this more
+  confusing.)
+- If the receipt fails to print, the line says so, so staff can write one
+  by hand. The payment is still logged.
+
 ## v1.9.0 — 2026-10-22
 
 - Payments mode (room hire, memberships, event bookings, donations) now
