@@ -153,7 +153,10 @@ No PIN required. Use this for anything that isn't a counter sale — room hire, 
 2. Enter the payer's **Name** (required) and the **Amount** in euros (required).
 3. Choose **Cash** or **Card**.
 4. Optionally add a **Reference** (a booking or membership number) and **Notes**.
-5. Press **Record Payment**, or **Esc** to cancel.
+5. Leave **Print receipt** ticked to give the payer a receipt, or untick it (e.g. for a donation where nobody wants one). It ticks itself again for the next payment. The tick-box only shows on tills with a receipt printer.
+6. Press **Record Payment**, or **Esc** to cancel.
+
+For **Cash**, the drawer opens when you record the payment, whether or not a receipt prints. Receipts are numbered **P-** plus a number (e.g. P-123), so they can't be confused with counter sales.
 
 Each entry is timestamped and appears in that day's `payments_YYYY-MM-DD.csv` report — it does not affect the book/item sales totals.
 

@@ -166,7 +166,7 @@ app/logger.py         sale recording, void, undo
 app/summary.py        daily CSV reports, office share / sync fallback
 app/backup.py         online database backup with retention
 app/barcode.py        in-house EAN-13 handling
-app/printing.py       ESC/POS receipt formatting and printing via CUPS (optional, config-gated)
+app/printing.py       ESC/POS receipts (Counter sales and Payments) and printing via CUPS (optional, config-gated)
 app/dashboard.py      read-only LAN sales/stock dashboard (Flask, config-gated, no auth — LAN only)
 app/templates/dashboard/  Jinja2 templates for the dashboard (server-rendered, autoescaped, no JS)
 app/utils.py          config, paths, atomic CSV writes
