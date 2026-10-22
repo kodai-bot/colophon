@@ -242,12 +242,12 @@ class PaymentsApp(App):
         reference = self.query_one("#field-reference", Input).value.strip()
         notes = self.query_one("#field-notes", Input).value.strip()
 
-        if ptype is Select.BLANK or not ptype:
+        if ptype is Select.NULL or not ptype:
             self._show_error("Please select a payment type.")
             self.query_one("#payment-type").focus()
             return
 
-        if method is Select.BLANK or not method:
+        if method is Select.NULL or not method:
             self._show_error("Please select a payment method (Cash or Card).")
             self.query_one("#payment-method").focus()
             return
@@ -291,8 +291,8 @@ class PaymentsApp(App):
         self.query_one("#payment-type").focus()
 
     def _clear_fields(self) -> None:
-        self.query_one("#payment-type", Select).value = Select.BLANK
-        self.query_one("#payment-method", Select).value = Select.BLANK
+        self.query_one("#payment-type", Select).value = Select.NULL
+        self.query_one("#payment-method", Select).value = Select.NULL
         self.query_one("#field-name", Input).value = ""
         self.query_one("#field-amount", Input).value = ""
         self.query_one("#field-reference", Input).value = ""
