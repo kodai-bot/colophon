@@ -4,11 +4,13 @@ payments.py - Payments mode for the Colophon bookshop counter system.
 
 Log sundry payments: room hire, memberships, event bookings, etc.
 No PIN required. Stays open for multiple entries in a row.
+Prints a receipt (untick "Print receipt" to skip) and opens the cash
+drawer for cash payments, as Counter mode does.
 Press Escape to return to mode selector.
 """
 
 from textual.app import App, ComposeResult
-from textual.widgets import Static, Input, Button, Select
+from textual.widgets import Static, Input, Button, Select, Checkbox
 from textual.containers import Horizontal, Vertical
 from textual.binding import Binding
 from textual import on
@@ -16,6 +18,8 @@ from datetime import datetime
 
 from app.utils import load_config, get_logger, timestamp_now
 from app.catalog import get_db
+from app.payment_methods import get_method
+from app.printing import format_payment_receipt, print_receipt, open_drawer
 from app.ui.quotes import get_quote_display
 from app.ui.widgets import BackButton, HintBar, literal
 
@@ -88,6 +92,21 @@ Screen { align: center middle; }
 
 Select {
     width: 1fr;
+}
+
+#receipt-row {
+    height: 3;
+    align: left middle;
+}
+
+#print-receipt {
+    background: #0f0f2a;
+    border: none;
+    color: #c8b89a;
+}
+
+#print-receipt:focus {
+    color: #d4af37;
 }
 
 #error-msg {
@@ -173,6 +192,7 @@ class PaymentsApp(App):
         self._payment_types = self.config.get("payment_types", DEFAULT_PAYMENT_TYPES)
         self._location = self.config.get("payments", {}).get("location_tag", "BOOKSHOP")
         self._shop_name = self.config.get("shop", {}).get("name", "Shop")
+        self._printer_enabled = self.config.get("printer", {}).get("enabled", False)
 
     def compose(self) -> ComposeResult:
         today = datetime.now().strftime("%a  %d %b %Y")
@@ -220,6 +240,10 @@ class PaymentsApp(App):
                     id="field-notes",
                     classes="field-input",
                 )
+            if self._printer_enabled:
+                with Horizontal(id="receipt-row"):
+                    yield Static("", classes="field-label")
+                    yield Checkbox("Print receipt", value=True, id="print-receipt")
             yield Static("", id="error-msg")
             with Horizontal(classes="btn-row"):
                 yield Button("  RECORD PAYMENT  ", id="btn-record")
@@ -267,7 +291,7 @@ class PaymentsApp(App):
             return
 
         now = timestamp_now()
-        self.conn.execute("""
+        cursor = self.conn.execute("""
             INSERT INTO payments
                 (timestamp, location, payment_type, payer_name, description, amount, reference, logged_by, payment_method)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -276,9 +300,24 @@ class PaymentsApp(App):
             notes or None, amount, reference or None, "counter", method,
         ))
         self.conn.commit()
+        payment_id = cursor.lastrowid
+
+        # Printing is best-effort and never raises: the payment is already saved.
+        receipt_status = "skipped"
+        if self._printer_enabled and self.query_one("#print-receipt", Checkbox).value:
+            receipt = format_payment_receipt(
+                ptype, name, amount, method, payment_id, self.config,
+                reference=reference or None, notes=notes or None,
+            )
+            printed = print_receipt(receipt, self.config, self.logger)  # kicks the drawer for cash
+            receipt_status = "printed" if printed else "failed"
+        elif get_method(method) and get_method(method).kicks_drawer:
+            open_drawer(self.config, self.logger)
 
         self.logger.info(
-            f"Payment recorded: {ptype} — {name} — €{amount:.2f}  method={method}  ref={reference or '—'}"
+            f"Payment recorded: {ptype} — {name} — €{amount:.2f}  method={method}  "
+            f"ref={reference or '—'}  id=P-{payment_id}  "
+            f"receipt={receipt_status}"
         )
 
         time_str = datetime.now().strftime("%H:%M")
@@ -297,6 +336,8 @@ class PaymentsApp(App):
         self.query_one("#field-amount", Input).value = ""
         self.query_one("#field-reference", Input).value = ""
         self.query_one("#field-notes", Input).value = ""
+        if self._printer_enabled:
+            self.query_one("#print-receipt", Checkbox).value = True
 
     def _show_error(self, msg: str) -> None:
         err = self.query_one("#error-msg")
