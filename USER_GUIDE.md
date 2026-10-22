@@ -158,6 +158,8 @@ No PIN required. Use this for anything that isn't a counter sale — room hire, 
 
 For **Cash**, the drawer opens when you record the payment, whether or not a receipt prints. Receipts are numbered **P-** plus a number (e.g. P-123), so they can't be confused with counter sales.
 
+When it's saved, a green **✓ Payment logged** line appears above the buttons, saying whether the receipt printed. If it says the receipt didn't print, the payment is still logged; check the printer or write a receipt by hand.
+
 Each entry is timestamped and appears in that day's `payments_YYYY-MM-DD.csv` report — it does not affect the book/item sales totals.
 
 ---

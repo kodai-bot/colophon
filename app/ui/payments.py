@@ -117,8 +117,13 @@ Select {
 }
 
 #error-msg.visible {
-    height: 1;
+    height: auto;
     margin-bottom: 1;
+}
+
+#error-msg.ok {
+    color: #6bcf8f;
+    text-style: bold;
 }
 
 .btn-row {
@@ -324,7 +329,13 @@ class PaymentsApp(App):
         self.query_one("#last-recorded").update(
             f"Last recorded:  {ptype}  —  {name}  —  €{amount:.2f}  —  {method.upper()}  —  {time_str}"
         )
-        self._hide_error()
+        receipt_note = {
+            "printed": "  ·  receipt printed",
+            "failed": "  ·  ⚠ receipt didn't print",
+        }.get(receipt_status, "")
+        self._show_ok(
+            f"Payment logged:  {ptype}  €{amount:.2f}  {method.upper()}{receipt_note}"
+        )
         self._clear_fields()
         self.query_one("#footer-quote").update(get_quote_display())
         self.query_one("#payment-type").focus()
@@ -342,12 +353,19 @@ class PaymentsApp(App):
     def _show_error(self, msg: str) -> None:
         err = self.query_one("#error-msg")
         err.update(f"⚠  {msg}")
+        err.remove_class("ok")
         err.add_class("visible")
+
+    def _show_ok(self, msg: str) -> None:
+        """Green confirmation in the same spot as errors, so staff know the payment saved."""
+        err = self.query_one("#error-msg")
+        err.update(f"✓  {msg}")
+        err.add_class("visible", "ok")
 
     def _hide_error(self) -> None:
         err = self.query_one("#error-msg")
         err.update("")
-        err.remove_class("visible")
+        err.remove_class("visible", "ok")
 
     # ── Event handlers ─────────────────────────────────────────
 
