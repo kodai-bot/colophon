@@ -8,7 +8,7 @@ import pytest
 from app.catalog import (
     get_item, add_item, decrement_stock, _create_tables,
     is_valid_barcode, resolve_barcode, normalize_barcode, validate_inhouse_prefix,
-    list_catalog, UNSORTED,
+    list_catalog, UNSORTED, RETIRED, remove_item, restore_item, has_sales,
 )
 
 
@@ -219,3 +219,56 @@ def test_list_catalog_category_filter_keeps_order(in_memory_db):
     assert [r["title"] for r in list_catalog(in_memory_db, category_filter=2)] == ["Card in", "Card out"]
     assert [r["title"] for r in list_catalog(in_memory_db, category_filter=UNSORTED)] == ["Loose"]
     assert len(list_catalog(in_memory_db, category_filter="all")) == 3
+
+
+# ── remove_item / restore_item (Intake [R] Remove) ───────────────────────────
+
+def _sell(conn, barcode, voided=0):
+    conn.execute("INSERT INTO sales (barcode, title, quantity, price, sold_at, voided)"
+                 " VALUES (?, 'x', 1, 5.0, '2026-10-28T12:00:00', ?)", (barcode, voided))
+    conn.commit()
+
+
+def test_remove_never_sold_item_deletes_it(in_memory_db):
+    _add(in_memory_db, "1", "Mistake", 1)
+    assert not has_sales("1", in_memory_db)
+    assert remove_item("1", in_memory_db) == "deleted"
+    assert get_item("1", in_memory_db) is None
+
+
+def test_remove_sold_item_retires_and_keeps_it(in_memory_db):
+    _add(in_memory_db, "1", "Old stock", 0)
+    _add(in_memory_db, "2", "Current", 2)
+    _sell(in_memory_db, "1")
+    assert remove_item("1", in_memory_db) == "retired"
+    assert get_item("1", in_memory_db)["retired"] == 1
+    assert [r["title"] for r in list_catalog(in_memory_db)] == ["Current"]
+    assert [r["title"] for r in list_catalog(in_memory_db, category_filter=RETIRED)] == ["Old stock"]
+
+
+def test_remove_item_with_only_voided_sales_is_retired_not_deleted(in_memory_db):
+    _add(in_memory_db, "1", "Voided once", 1)
+    _sell(in_memory_db, "1", voided=1)
+    assert remove_item("1", in_memory_db) == "retired"
+
+
+def test_remove_missing_item_returns_none(in_memory_db):
+    assert remove_item("nope", in_memory_db) is None
+
+
+def test_restore_item_puts_it_back(in_memory_db):
+    _add(in_memory_db, "1", "Back again", 1)
+    _sell(in_memory_db, "1")
+    remove_item("1", in_memory_db)
+    restore_item("1", in_memory_db)
+    assert [r["title"] for r in list_catalog(in_memory_db)] == ["Back again"]
+    assert list_catalog(in_memory_db, category_filter=RETIRED) == []
+
+
+def test_retired_items_left_out_of_low_stock(in_memory_db):
+    from app.summary import get_low_stock
+    _add(in_memory_db, "1", "Retired zero", 0)
+    _add(in_memory_db, "2", "Live zero", 0)
+    _sell(in_memory_db, "1")
+    remove_item("1", in_memory_db)
+    assert [r["title"] for r in get_low_stock(2, in_memory_db)] == ["Live zero"]

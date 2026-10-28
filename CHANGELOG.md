@@ -1,5 +1,24 @@
 # Changelog
 
+## v1.11.0 — 2026-10-28
+
+- Intake has a new **[R] Remove** key and button, for one highlighted
+  item at a time (it doesn't act on marked items). It asks first, and does
+  the safe thing on its own:
+  - **Never sold** (a mistake or duplicate): the item is **deleted** for
+    good.
+  - **Has sales**: the item is **retired**. It's hidden from the list, but
+    it stays in the records, so past sales and reports still make sense.
+- A new **Retired** tab, after Unsorted, lists retired items. Highlight
+  one and press **[R] Restore** to put it back on the list.
+- Scanning a retired item still finds it (it opens the Retired tab), and
+  the counter can still sell it. **Receiving stock (+)** for a retired
+  item puts it back on the list automatically.
+- Retired items no longer show up in the dashboard's Low stock list.
+- Deletes, retires and restores are written to the day's log.
+- Database: adds a `retired` field to the catalogue, added automatically
+  the first time the till starts. Existing items are all un-retired.
+
 ## v1.10.0 — 2026-10-28
 
 - The Intake catalogue now lists **items in stock first**. Items with no
