@@ -309,11 +309,12 @@ def add_item(item: dict, conn: sqlite3.Connection) -> None:
 
 
 def list_catalog(conn: sqlite3.Connection, term: str = "",
-                 category_filter="all") -> list[sqlite3.Row]:
+                 category_filter="all", by_stock: bool = False) -> list[sqlite3.Row]:
     """Catalog rows for browsing: in-stock items first, then out-of-stock
     (stock 0 or less), each group A–Z by title. term matches title, author
     or publisher. category_filter is "all", UNSORTED, RETIRED or a category
-    id; retired items only appear under RETIRED."""
+    id; retired items only appear under RETIRED. by_stock lists the most
+    stock first instead (ties A–Z), which also leaves out-of-stock last."""
     where, params = [], []
     where.append("COALESCE(c.retired, 0) = 1" if category_filter == RETIRED
                  else "COALESCE(c.retired, 0) = 0")
@@ -333,7 +334,8 @@ def list_catalog(conn: sqlite3.Connection, term: str = "",
         FROM catalog c
         LEFT JOIN categories k ON k.id = c.category_id
         WHERE {" AND ".join(where)}
-        ORDER BY (COALESCE(c.stock, 0) <= 0), c.title
+        ORDER BY {"COALESCE(c.stock, 0) DESC" if by_stock else "(COALESCE(c.stock, 0) <= 0)"},
+                 c.title
     """, params).fetchall()
 
 

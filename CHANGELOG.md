@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.12.0 — 2026-10-28
+
+- Intake has a new **[O] Sort** key. It switches the list between the
+  usual order (in stock first, then A–Z) and **most stock first**. With
+  most stock first, items with the same count are A–Z, and out-of-stock
+  items are still last and greyed. The count line shows "sorted by stock"
+  while it's on. The highlighted item stays highlighted when you switch.
+- The sort lasts until you leave Intake; it starts in the usual order
+  each time.
+
 ## v1.11.1 — 2026-10-28
 
 - The barcode script (`scripts/gen_barcode.py`) now uses the shop's own
