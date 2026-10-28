@@ -7,6 +7,7 @@ Scan a barcode to jump to an item or add new ones via optional API lookup.
 No sales are logged here (use Log Sale button for manual entries only).
 """
 
+from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.widgets import Static, Input, Button, DataTable, Select, OptionList
 from textual.widgets.option_list import Option
@@ -21,7 +22,7 @@ from app.catalog import (
     get_db, add_item, get_item, normalize_barcode, get_inhouse_prefix,
     make_inhouse_barcode, next_inhouse_number, decrement_stock,
     BOOKS_CATEGORY_ID, list_categories, create_category, set_category,
-    get_category_name,
+    get_category_name, list_catalog, UNSORTED,
 )
 from app.barcode import generate_svg, generate_sheet
 from app.ui.quotes import get_quote_display
@@ -443,7 +444,6 @@ class SalePaymentScreen(ModalScreen):
 # ── Categories ───────────────────────────────────────────────────────────────
 
 NEW_CATEGORY = "__new__"   # picker option that opens NewCategoryModal
-UNSORTED = "unsorted"      # picker / tab key for items with no category
 
 
 def singular(category_name: str) -> str:
@@ -972,23 +972,7 @@ class IntakeApp(App):
         table = self.query_one("#catalog-table", DataTable)
         self._highlighted_barcode = None
 
-        where, params = [], []
-        if term:
-            where.append("(LOWER(c.title) LIKE ? OR LOWER(c.author) LIKE ?)")
-            params += [f"%{term.lower()}%", f"%{term.lower()}%"]
-        if self._category_filter == UNSORTED:
-            where.append("c.category_id IS NULL")
-        elif isinstance(self._category_filter, int):
-            where.append("c.category_id = ?")
-            params.append(self._category_filter)
-        rows = self.conn.execute(f"""
-            SELECT c.barcode, c.title, c.author, c.price, c.stock, c.needs_recount,
-                   COALESCE(k.name, 'Unsorted') AS category
-            FROM catalog c
-            LEFT JOIN categories k ON k.id = c.category_id
-            {"WHERE " + " AND ".join(where) if where else ""}
-            ORDER BY c.title
-        """, params).fetchall()
+        rows = list_catalog(self.conn, term, self._category_filter)
 
         for row in rows:
             barcode = row["barcode"] or ""
@@ -1001,6 +985,9 @@ class IntakeApp(App):
             if show_category:
                 cells.append(row["category"][:10])
             cells += [price_str, stock_str]
+            if (row["stock"] or 0) <= 0:
+                # Out of stock: listed at the bottom, dimmed (mark stays plain)
+                cells = cells[:1] + [Text(c, style="dim") for c in cells[1:]]
             table.add_row(*cells, key=barcode)
 
         count = len(rows)
@@ -1012,6 +999,9 @@ class IntakeApp(App):
         else:
             noun = "items" if count != 1 else "item"
         label = f"  {count} {noun}"
+        out_n = sum(1 for row in rows if (row["stock"] or 0) <= 0)
+        if out_n:
+            label += f" · {out_n} out of stock (dimmed, at bottom)"
         if term:
             label += f" matching '{term}'"
         label += literal("  ·  [ ] tabs  ·  ↑↓ browse  ·  [M] mark  ·  [P] price  ·  [S] stock  ·  [+] receive")

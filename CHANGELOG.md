@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.10.0 — 2026-10-28
+
+- The Intake catalogue now lists **items in stock first**. Items with no
+  stock left drop to the bottom of the list and are shown greyed out, so
+  what's on the shelves is easy to browse without knowing the name.
+  Nothing is deleted: sold-out items are still there, and receiving stock
+  (+) or setting stock (S) on one moves it back up to the top part.
+- The count line says how many items are out of stock, e.g.
+  "69 items · 17 out of stock (dimmed, at bottom)".
+- Search now matches the **publisher** too, as well as title and author.
+- Scanning a barcode still finds any item, in stock or not.
+
 ## v1.9.1 — 2026-10-22
 
 - Payments mode now shows a clear green **✓ Payment logged** line just
