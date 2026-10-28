@@ -58,7 +58,7 @@ def get_low_stock(threshold: int, conn) -> list[dict]:
     rows = conn.execute("""
         SELECT barcode, title, author, stock
         FROM catalog
-        WHERE stock <= ?
+        WHERE stock <= ? AND COALESCE(retired, 0) = 0
         ORDER BY stock, title
     """, (threshold,)).fetchall()
     return [dict(r) for r in rows]

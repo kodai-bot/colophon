@@ -22,7 +22,8 @@ from app.catalog import (
     get_db, add_item, get_item, normalize_barcode, get_inhouse_prefix,
     make_inhouse_barcode, next_inhouse_number, decrement_stock,
     BOOKS_CATEGORY_ID, list_categories, create_category, set_category,
-    get_category_name, list_catalog, UNSORTED,
+    get_category_name, list_catalog, UNSORTED, RETIRED,
+    has_sales, remove_item, restore_item,
 )
 from app.barcode import generate_svg, generate_sheet
 from app.ui.quotes import get_quote_display
@@ -292,6 +293,34 @@ class SetStockModal(ModalScreen):
 
     def action_cancel(self) -> None:
         self.dismiss(None)
+
+
+class ConfirmRemoveModal(ModalScreen):
+    """Yes/no check before an item is deleted, retired or restored."""
+
+    DEFAULT_CSS = _DIALOG_CSS.format(cls="ConfirmRemoveModal", border="#c86a5a")
+
+    BINDINGS = [
+        Binding("enter,y", "confirm", "Confirm"),
+        Binding("escape,n", "cancel", "Cancel"),
+    ]
+
+    def __init__(self, item_display: str, message: str, **kwargs):
+        super().__init__(**kwargs)
+        self._item_display = item_display
+        self._message = message
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="dialog-box"):
+            yield Static(self._item_display[:56], id="dialog-title")
+            yield Static(self._message, id="dialog-info")
+            yield Static("  Enter to confirm   ·   Esc to cancel", id="dialog-hint")
+
+    def action_confirm(self) -> None:
+        self.dismiss(True)
+
+    def action_cancel(self) -> None:
+        self.dismiss(False)
 
 
 # ── Receive Stock modal ──────────────────────────────────────────────────────
@@ -830,6 +859,7 @@ class IntakeApp(App):
         Binding("m", "toggle_mark", "Mark", show=True),
         Binding("a", "add_item", "Add Item", show=True),
         Binding("c", "set_category", "Category", show=True),
+        Binding("r", "remove_item", "Remove", show=True),
         Binding("left_square_bracket", "prev_category_tab", "Previous tab", show=False),
         Binding("right_square_bracket", "next_category_tab", "Next tab", show=False),
         Binding("ctrl+q", "quit", "Quit", show=True),
@@ -879,6 +909,7 @@ class IntakeApp(App):
             yield Button(literal("[G] Log Sale"),            id="btn-log-sale",  classes="action-btn", disabled=True)
             yield Button(literal("[C] Category"),            id="btn-set-category", classes="action-btn", disabled=True)
             yield Button(literal("[A] Add Item"),            id="btn-add-item",  classes="action-btn")
+            yield Button(literal("[R] Remove"),              id="btn-remove",    classes="action-btn", disabled=True)
 
         yield HintBar(id="hint-bar")
         yield Static(get_quote_display(), id="footer")
@@ -895,15 +926,16 @@ class IntakeApp(App):
         return list_categories(self.conn)
 
     def _tab_keys(self) -> list[str | int]:
-        return ["all"] + [c["id"] for c in self._categories()] + [UNSORTED]
+        return ["all"] + [c["id"] for c in self._categories()] + [UNSORTED, RETIRED]
 
     def _build_category_tabs(self) -> None:
-        """(Re)build the tab strip: All · <categories> · Unsorted."""
+        """(Re)build the tab strip: All · <categories> · Unsorted · Retired."""
         bar = self.query_one("#category-bar", Horizontal)
         bar.remove_children()
         tabs = [("all", "All")]
         tabs += [(str(c["id"]), c["name"]) for c in self._categories()]
         tabs.append((UNSORTED, "Unsorted"))
+        tabs.append((RETIRED, "Retired"))
         bar.mount(*[
             Button(label, name=key, compact=True,
                    classes="cat-tab -active" if key == str(self._category_filter) else "cat-tab")
@@ -996,6 +1028,8 @@ class IntakeApp(App):
             noun = tab_name.lower() if count != 1 else singular(tab_name).lower()
         elif self._category_filter == UNSORTED:
             noun = "unsorted items" if count != 1 else "unsorted item"
+        elif self._category_filter == RETIRED:
+            noun = "retired items" if count != 1 else "retired item"
         else:
             noun = "items" if count != 1 else "item"
         label = f"  {count} {noun}"
@@ -1016,9 +1050,11 @@ class IntakeApp(App):
 
     def _jump_to_barcode(self, barcode: str) -> None:
         table = self.query_one("#catalog-table", DataTable)
-        if barcode not in table.rows and self._category_filter != "all":
-            # The item lives on another tab — show All so it can be found.
-            self._select_category_tab("all")
+        if barcode not in table.rows:
+            # The item lives on another tab — show All (or Retired) so it
+            # can be found.
+            item = get_item(barcode, self.conn)
+            self._select_category_tab(RETIRED if item and item.get("retired") else "all")
         try:
             row_index = table.get_row_index(barcode)
             table.move_cursor(row=row_index)
@@ -1050,6 +1086,13 @@ class IntakeApp(App):
         # enter scan-to-receive mode (see action_receive).
         self.query_one("#btn-gen-label", Button).disabled = not is_inhouse
         self.query_one("#btn-log-sale",  Button).disabled = not single
+        # Remove works on one highlighted item at a time, never on marks.
+        self.query_one("#btn-remove", Button).disabled = not (
+            self._highlighted_barcode and not self._marked_barcodes
+        )
+        self.query_one("#btn-remove", Button).label = literal(
+            "[R] Restore" if self._category_filter == RETIRED else "[R] Remove"
+        )
 
         marked_count = len(self._marked_barcodes)
         if marked_count:
@@ -1415,6 +1458,52 @@ class IntakeApp(App):
     def _click_category(self) -> None:
         self.action_set_category()
 
+    # ── Remove / restore ──────────────────────────────────────
+
+    def action_remove_item(self) -> None:
+        barcode = self._highlighted_barcode
+        if not barcode or self._marked_barcodes:
+            return
+        item = get_item(barcode, self.conn)
+        if not item:
+            return
+        if item.get("retired"):
+            message = "Put this item back on the list?"
+        elif has_sales(barcode, self.conn):
+            message = ("It has sales, so it will be retired: hidden from the list\n"
+                       "but kept for the records. Find it again on the Retired tab.")
+        else:
+            message = ("It has never been sold, so it will be deleted for good.\n"
+                       "Use this for mistakes and duplicates.")
+        self.push_screen(
+            ConfirmRemoveModal(item["title"] or barcode, message),
+            callback=lambda ok: self._apply_remove(item, ok),
+        )
+
+    def _apply_remove(self, item: dict, ok: bool) -> None:
+        if not ok:
+            return
+        barcode, title = item["barcode"], item["title"]
+        if item.get("retired"):
+            restore_item(barcode, self.conn)
+            self.logger.info(f"Intake: item restored barcode={barcode} title='{title}'")
+            done = "Restored"
+        else:
+            result = remove_item(barcode, self.conn)
+            self.logger.info(
+                f"Intake: item {result} barcode={barcode} title='{title}' stock={item['stock']}"
+            )
+            done = "Deleted" if result == "deleted" else "Retired"
+        self._load_catalog_table(self.query_one("#catalog-search-input").value.strip())
+        # After the reload's row-highlight event, which would overwrite this.
+        self.call_after_refresh(
+            self.query_one("#selection-info").update, f"  ✦  {done}: {title[:50]}"
+        )
+
+    @on(Button.Pressed, "#btn-remove")
+    def _click_remove(self) -> None:
+        self.action_remove_item()
+
     # ── Receive action ────────────────────────────────────────
 
     def action_receive(self) -> None:
@@ -1463,7 +1552,8 @@ class IntakeApp(App):
             now = datetime.now().isoformat()
             for barcode in barcodes:
                 self.conn.execute(
-                    "UPDATE catalog SET stock = stock + ?, needs_recount = 0, updated_at = ? WHERE barcode = ?",
+                    "UPDATE catalog SET stock = stock + ?, needs_recount = 0, retired = 0,"
+                    " updated_at = ? WHERE barcode = ?",
                     (qty, now, barcode),
                 )
                 self.logger.info(f"Intake: received +{qty} for barcode={barcode}")

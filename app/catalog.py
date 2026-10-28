@@ -16,6 +16,7 @@ INHOUSE_PREFIX = "2000001"  # default; overridden by config["catalog"]["inhouse_
 BOOKS_CATEGORY_ID = 1
 DEFAULT_CATEGORIES = [(1, "Books"), (2, "Cards"), (3, "Prints")]
 UNSORTED = "unsorted"      # category filter / picker key for items with no category
+RETIRED = "retired"        # category filter for items taken off the list (see remove_item)
 
 
 def get_inhouse_prefix(config: dict) -> str:
@@ -199,6 +200,7 @@ def _create_tables(conn: sqlite3.Connection) -> None:
         "ALTER TABLE sales ADD COLUMN transaction_id TEXT",
         "ALTER TABLE payments ADD COLUMN payment_method TEXT",
         "ALTER TABLE catalog ADD COLUMN needs_recount INTEGER DEFAULT 0",
+        "ALTER TABLE catalog ADD COLUMN retired INTEGER DEFAULT 0",
         # Rename isbn → barcode (SQLite >= 3.25)
         "ALTER TABLE catalog RENAME COLUMN isbn TO barcode",
         "ALTER TABLE sales RENAME COLUMN isbn TO barcode",
@@ -310,8 +312,11 @@ def list_catalog(conn: sqlite3.Connection, term: str = "",
                  category_filter="all") -> list[sqlite3.Row]:
     """Catalog rows for browsing: in-stock items first, then out-of-stock
     (stock 0 or less), each group A–Z by title. term matches title, author
-    or publisher. category_filter is "all", UNSORTED or a category id."""
+    or publisher. category_filter is "all", UNSORTED, RETIRED or a category
+    id; retired items only appear under RETIRED."""
     where, params = [], []
+    where.append("COALESCE(c.retired, 0) = 1" if category_filter == RETIRED
+                 else "COALESCE(c.retired, 0) = 0")
     if term:
         like = f"%{term.lower()}%"
         where.append("(LOWER(c.title) LIKE ? OR LOWER(c.author) LIKE ?"
@@ -327,9 +332,44 @@ def list_catalog(conn: sqlite3.Connection, term: str = "",
                COALESCE(k.name, 'Unsorted') AS category
         FROM catalog c
         LEFT JOIN categories k ON k.id = c.category_id
-        {"WHERE " + " AND ".join(where) if where else ""}
+        WHERE {" AND ".join(where)}
         ORDER BY (COALESCE(c.stock, 0) <= 0), c.title
     """, params).fetchall()
+
+
+def has_sales(barcode: str, conn: sqlite3.Connection) -> bool:
+    """True if any sale (voided or not) was ever logged for this barcode."""
+    return conn.execute(
+        "SELECT 1 FROM sales WHERE barcode = ? LIMIT 1", (barcode,)
+    ).fetchone() is not None
+
+
+def remove_item(barcode: str, conn: sqlite3.Connection) -> str | None:
+    """Take an item off the catalog list. An item that has never sold is
+    deleted (it was a mistake); one with sales history is retired instead,
+    so its sales still make sense. Returns "deleted", "retired" or None."""
+    if not get_item(barcode, conn):
+        return None
+    if has_sales(barcode, conn):
+        conn.execute(
+            "UPDATE catalog SET retired = 1, updated_at = ? WHERE barcode = ?",
+            (timestamp_now(), barcode),
+        )
+        result = "retired"
+    else:
+        conn.execute("DELETE FROM catalog WHERE barcode = ?", (barcode,))
+        result = "deleted"
+    conn.commit()
+    return result
+
+
+def restore_item(barcode: str, conn: sqlite3.Connection) -> None:
+    """Put a retired item back on the catalog list."""
+    conn.execute(
+        "UPDATE catalog SET retired = 0, updated_at = ? WHERE barcode = ?",
+        (timestamp_now(), barcode),
+    )
+    conn.commit()
 
 
 # ── Categories ───────────────────────────────────────────────────────────────
