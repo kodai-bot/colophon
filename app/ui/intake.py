@@ -860,6 +860,7 @@ class IntakeApp(App):
         Binding("a", "add_item", "Add Item", show=True),
         Binding("c", "set_category", "Category", show=True),
         Binding("r", "remove_item", "Remove", show=True),
+        Binding("o", "toggle_sort", "Sort", show=True),
         Binding("left_square_bracket", "prev_category_tab", "Previous tab", show=False),
         Binding("right_square_bracket", "next_category_tab", "Next tab", show=False),
         Binding("ctrl+q", "quit", "Quit", show=True),
@@ -879,6 +880,8 @@ class IntakeApp(App):
         self._receive_mode: bool = False
         # Category tab: "all", UNSORTED, or a category id
         self._category_filter: str | int = "all"
+        # [O] Sort: False = in stock first then A–Z, True = most stock first
+        self._sort_by_stock: bool = False
 
     def compose(self) -> ComposeResult:
         creator_label = self._ui.get("creator_label", "Author")
@@ -1004,7 +1007,7 @@ class IntakeApp(App):
         table = self.query_one("#catalog-table", DataTable)
         self._highlighted_barcode = None
 
-        rows = list_catalog(self.conn, term, self._category_filter)
+        rows = list_catalog(self.conn, term, self._category_filter, self._sort_by_stock)
 
         for row in rows:
             barcode = row["barcode"] or ""
@@ -1038,7 +1041,9 @@ class IntakeApp(App):
             label += f" · {out_n} out of stock (dimmed, at bottom)"
         if term:
             label += f" matching '{term}'"
-        label += literal("  ·  [ ] tabs  ·  ↑↓ browse  ·  [M] mark  ·  [P] price  ·  [S] stock  ·  [+] receive")
+        if self._sort_by_stock:
+            label += "  ·  sorted by stock"
+        label += literal("  ·  [ ] tabs  ·  ↑↓ browse  ·  [M] mark  ·  [P] price  ·  [S] stock  ·  [+] receive  ·  [O] sort")
         recount_n = sum(1 for row in rows if row["needs_recount"])
         if recount_n:
             label += f"  ·  ⚠ {recount_n} need recount"
@@ -1457,6 +1462,15 @@ class IntakeApp(App):
     @on(Button.Pressed, "#btn-set-category")
     def _click_category(self) -> None:
         self.action_set_category()
+
+    # ── Sort ──────────────────────────────────────────────────
+
+    def action_toggle_sort(self) -> None:
+        self._sort_by_stock = not self._sort_by_stock
+        keep = self._highlighted_barcode
+        self._load_catalog_table(self.query_one("#catalog-search-input").value.strip())
+        if keep:
+            self._jump_to_barcode(keep)
 
     # ── Remove / restore ──────────────────────────────────────
 

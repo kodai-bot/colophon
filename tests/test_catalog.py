@@ -272,3 +272,12 @@ def test_retired_items_left_out_of_low_stock(in_memory_db):
     _sell(in_memory_db, "1")
     remove_item("1", in_memory_db)
     assert [r["title"] for r in get_low_stock(2, in_memory_db)] == ["Live zero"]
+
+
+def test_list_catalog_by_stock_most_first_ties_az(in_memory_db):
+    _add(in_memory_db, "1", "Few", 2)
+    _add(in_memory_db, "2", "Many", 40)
+    _add(in_memory_db, "3", "Gone", 0)
+    _add(in_memory_db, "4", "Also few", 2)
+    titles = [r["title"] for r in list_catalog(in_memory_db, by_stock=True)]
+    assert titles == ["Many", "Also few", "Few", "Gone"]
