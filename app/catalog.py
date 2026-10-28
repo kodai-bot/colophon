@@ -15,6 +15,7 @@ INHOUSE_PREFIX = "2000001"  # default; overridden by config["catalog"]["inhouse_
 # can rename them in Admin but not delete them. NULL category_id = Unsorted.
 BOOKS_CATEGORY_ID = 1
 DEFAULT_CATEGORIES = [(1, "Books"), (2, "Cards"), (3, "Prints")]
+UNSORTED = "unsorted"      # category filter / picker key for items with no category
 
 
 def get_inhouse_prefix(config: dict) -> str:
@@ -303,6 +304,32 @@ def add_item(item: dict, conn: sqlite3.Connection) -> None:
             updated_at=excluded.updated_at
     """, {"category_id": None, **item, "added_at": now, "updated_at": now})
     conn.commit()
+
+
+def list_catalog(conn: sqlite3.Connection, term: str = "",
+                 category_filter="all") -> list[sqlite3.Row]:
+    """Catalog rows for browsing: in-stock items first, then out-of-stock
+    (stock 0 or less), each group A–Z by title. term matches title, author
+    or publisher. category_filter is "all", UNSORTED or a category id."""
+    where, params = [], []
+    if term:
+        like = f"%{term.lower()}%"
+        where.append("(LOWER(c.title) LIKE ? OR LOWER(c.author) LIKE ?"
+                     " OR LOWER(COALESCE(c.publisher, '')) LIKE ?)")
+        params += [like, like, like]
+    if category_filter == UNSORTED:
+        where.append("c.category_id IS NULL")
+    elif isinstance(category_filter, int):
+        where.append("c.category_id = ?")
+        params.append(category_filter)
+    return conn.execute(f"""
+        SELECT c.barcode, c.title, c.author, c.price, c.stock, c.needs_recount,
+               COALESCE(k.name, 'Unsorted') AS category
+        FROM catalog c
+        LEFT JOIN categories k ON k.id = c.category_id
+        {"WHERE " + " AND ".join(where) if where else ""}
+        ORDER BY (COALESCE(c.stock, 0) <= 0), c.title
+    """, params).fetchall()
 
 
 # ── Categories ───────────────────────────────────────────────────────────────

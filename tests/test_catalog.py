@@ -8,6 +8,7 @@ import pytest
 from app.catalog import (
     get_item, add_item, decrement_stock, _create_tables,
     is_valid_barcode, resolve_barcode, normalize_barcode, validate_inhouse_prefix,
+    list_catalog, UNSORTED,
 )
 
 
@@ -175,3 +176,46 @@ def test_resolve_barcode_returns_cached_item(in_memory_db, sample_item):
     result = resolve_barcode("9780571331475", in_memory_db, config, _Logger())
     assert result is not None
     assert result["title"] == "Test Book"
+
+
+# ── list_catalog (Intake browsing order) ─────────────────────────────────────
+
+def _add(conn, barcode, title, stock, publisher="", category_id=None):
+    add_item({"barcode": barcode, "title": title, "author": "A", "publisher": publisher,
+              "year": "", "price": 5.0, "stock": stock, "manual": 1,
+              "category_id": category_id}, conn)
+
+
+def test_list_catalog_in_stock_first_then_az(in_memory_db):
+    _add(in_memory_db, "1", "Zebra", 3)
+    _add(in_memory_db, "2", "Apple", 0)
+    _add(in_memory_db, "3", "Mango", 1)
+    _add(in_memory_db, "4", "Banana", 0)
+    titles = [r["title"] for r in list_catalog(in_memory_db)]
+    assert titles == ["Mango", "Zebra", "Apple", "Banana"]
+
+
+def test_list_catalog_null_or_negative_stock_counts_as_out(in_memory_db):
+    _add(in_memory_db, "1", "Null stock", 0)
+    in_memory_db.execute("UPDATE catalog SET stock = NULL WHERE barcode = '1'")
+    _add(in_memory_db, "2", "Negative", -2)
+    _add(in_memory_db, "3", "Zed in stock", 1)
+    titles = [r["title"] for r in list_catalog(in_memory_db)]
+    assert titles == ["Zed in stock", "Negative", "Null stock"]
+
+
+def test_list_catalog_search_matches_title_author_publisher(in_memory_db):
+    _add(in_memory_db, "1", "Ulysses", 1, publisher="Faber")
+    _add(in_memory_db, "2", "Dubliners", 1, publisher="Penguin")
+    assert [r["title"] for r in list_catalog(in_memory_db, "faber")] == ["Ulysses"]
+    assert [r["title"] for r in list_catalog(in_memory_db, "DUBLIN")] == ["Dubliners"]
+    assert len(list_catalog(in_memory_db, "a")) == 2   # author "A"
+
+
+def test_list_catalog_category_filter_keeps_order(in_memory_db):
+    _add(in_memory_db, "1", "Card out", 0, category_id=2)
+    _add(in_memory_db, "2", "Card in", 4, category_id=2)
+    _add(in_memory_db, "3", "Loose", 1)
+    assert [r["title"] for r in list_catalog(in_memory_db, category_filter=2)] == ["Card in", "Card out"]
+    assert [r["title"] for r in list_catalog(in_memory_db, category_filter=UNSORTED)] == ["Loose"]
+    assert len(list_catalog(in_memory_db, category_filter="all")) == 3
