@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.11.1 — 2026-10-28
+
+- The barcode script (`scripts/gen_barcode.py`) now uses the shop's own
+  in-house barcode prefix from the settings, as the till does, instead of
+  a fixed number. `--sheet` also works again (it was looking for an old
+  column name). Fixed on 2026-10-21 and used then to register the
+  postcard barcodes; committed today.
+
 ## v1.11.0 — 2026-10-28
 
 - Intake has a new **[R] Remove** key and button, for one highlighted

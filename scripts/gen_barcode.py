@@ -38,7 +38,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from pathlib import Path
 from app.utils import load_config, timestamp_now
 from app.catalog import (
-    get_db, make_inhouse_barcode, next_inhouse_number, INHOUSE_PREFIX,
+    get_db, make_inhouse_barcode, next_inhouse_number, get_inhouse_prefix,
     list_categories,
 )
 from app.barcode import generate_svg, generate_sheet as _generate_sheet
@@ -46,18 +46,18 @@ from app.barcode import generate_svg, generate_sheet as _generate_sheet
 OUTPUT_DIR = Path("barcodes")
 
 
-def make_barcode_number(item_number: int) -> str:
-    return make_inhouse_barcode(item_number)
+def make_barcode_number(item_number: int, prefix: str) -> str:
+    return make_inhouse_barcode(item_number, prefix)
 
 
-def next_item_number(conn) -> int:
-    return next_inhouse_number(conn)
+def next_item_number(conn, prefix: str) -> int:
+    return next_inhouse_number(conn, prefix)
 
 
-def cmd_list(conn) -> None:
+def cmd_list(conn, prefix: str) -> None:
     rows = conn.execute(
         "SELECT barcode, title, price, stock FROM catalog WHERE barcode LIKE ? ORDER BY barcode",
-        (INHOUSE_PREFIX + "%",)
+        (prefix + "%",)
     ).fetchall()
     if not rows:
         print("No in-house items registered yet.")
@@ -65,7 +65,7 @@ def cmd_list(conn) -> None:
     print(f"\n{'#':<6}  {'Barcode':<15}  {'Name':<32}  {'Price':>7}  {'Stock':>5}")
     print("─" * 72)
     for row in rows:
-        num = int(row["barcode"][len(INHOUSE_PREFIX):len(INHOUSE_PREFIX)+5])
+        num = int(row["barcode"][len(prefix):len(prefix)+5])
         price_str = f"€{row['price']:.2f}" if row["price"] else "—"
         print(f"{num:<6}  {row['barcode']:<15}  {row['title']:<32}  {price_str:>7}  {row['stock']:>5}")
     print()
@@ -87,9 +87,10 @@ def resolve_category(conn, name: str | None) -> int | None:
 
 def cmd_add(conn, config, name: str, price: float | None, number: int | None,
             category: str | None = None) -> None:
+    prefix = get_inhouse_prefix(config)
     category_id = resolve_category(conn, category)
-    item_number = number if number is not None else next_item_number(conn)
-    barcode_number = make_barcode_number(item_number)
+    item_number = number if number is not None else next_item_number(conn, prefix)
+    barcode_number = make_barcode_number(item_number, prefix)
 
     # Check for collision
     existing = conn.execute(
@@ -119,8 +120,8 @@ def cmd_add(conn, config, name: str, price: float | None, number: int | None,
     print(f"   The scanner will recognise it immediately.\n")
 
 
-def cmd_regenerate(conn, number: int) -> None:
-    barcode_number = make_barcode_number(number)
+def cmd_regenerate(conn, config, number: int) -> None:
+    barcode_number = make_barcode_number(number, get_inhouse_prefix(config))
     row = conn.execute(
         "SELECT title, price FROM catalog WHERE barcode = ?", (barcode_number,)
     ).fetchone()
@@ -134,14 +135,15 @@ def cmd_regenerate(conn, number: int) -> None:
 
 def cmd_sheet(conn, config) -> None:
     """Generate a self-contained printable HTML sheet of all in-house barcodes."""
+    prefix = get_inhouse_prefix(config)
     count = conn.execute(
-        "SELECT COUNT(*) FROM catalog WHERE isbn LIKE ?", (INHOUSE_PREFIX + "%",)
+        "SELECT COUNT(*) FROM catalog WHERE barcode LIKE ?", (prefix + "%",)
     ).fetchone()[0]
     if not count:
         print("No in-house items registered yet. Use --add first.")
         return
     shop_name = config.get("shop", {}).get("name", "Bookshop")
-    sheet_path = _generate_sheet(conn, INHOUSE_PREFIX, shop_name)
+    sheet_path = _generate_sheet(conn, prefix, shop_name)
     print(f"✦  Print sheet written to: {sheet_path}")
     print(f"   Open in a browser and print (Ctrl+P).")
     print(f"   Set paper size A4, margins normal, scale 100%.")
@@ -172,11 +174,11 @@ def main():
     conn = get_db(config)
 
     if args.list:
-        cmd_list(conn)
+        cmd_list(conn, get_inhouse_prefix(config))
     elif args.add:
         cmd_add(conn, config, args.add, args.price, args.number, args.category)
     elif args.regenerate is not None:
-        cmd_regenerate(conn, args.regenerate)
+        cmd_regenerate(conn, config, args.regenerate)
     elif args.sheet:
         cmd_sheet(conn, config)
 
