@@ -110,6 +110,7 @@ def _build_receipt(
     out += text(body_lines)
     out += BOLD_ON + DOUBLE_HEIGHT_ON + text([total_line]) + DOUBLE_HEIGHT_OFF + BOLD_OFF
     out += text(tail_lines)
+    out += b"\n"  # breathing room between the footer and the version line
     out += ALIGN_CENTER + FONT_B
     out += text([f"Colophon v{APP_VERSION} · built by Industrial Automata"])
     out += FONT_A + ALIGN_LEFT
