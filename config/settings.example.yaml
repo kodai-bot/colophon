@@ -1,6 +1,7 @@
 shop:
   name: "My Shop"
   location: "Town"
+  address_line: "Town  A12 B345"   # printed under the shop name on receipts
   timezone: "Europe/Dublin"
 
 database:

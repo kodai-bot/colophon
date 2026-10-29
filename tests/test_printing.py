@@ -11,8 +11,9 @@ import pytest
 from app.printing import (
     format_currency, format_line_item, format_receipt, format_payment_receipt, print_receipt,
     INIT, SELECT_CODEPAGE_PC858, CUT_COMMANDS, CODEPAGE, DRAWER_KICK, open_drawer,
-    CupsEscPosPrinter,
+    CupsEscPosPrinter, BOLD_ON, BOLD_OFF, DOUBLE_HEIGHT_ON, DOUBLE_HEIGHT_OFF, FONT_B,
 )
+from app import APP_VERSION
 
 
 class StubLogger:
@@ -118,6 +119,42 @@ def test_format_receipt_total_line_uses_total_argument_not_item_sum(config):
     text = receipt.decode(CODEPAGE)
     assert "€3.50" in text
     assert "TOTAL" in text
+
+
+def test_format_receipt_shows_sale_number(config):
+    receipt = format_receipt([("Book", 10.0, 1)], 10.0, "cash", "20261029_143012", config)
+    assert "Sale no. 20261029-143012" in receipt.decode(CODEPAGE)
+
+
+def test_receipt_prints_address_line_when_configured(config):
+    config["shop"]["address_line"] = "Sligo  F91 DVY4"
+    receipt = format_receipt([("Book", 10.0, 1)], 10.0, "cash", "txn1", config)
+    assert "Sligo  F91 DVY4" in receipt.decode(CODEPAGE)
+
+
+def test_receipt_without_address_line_has_no_blank_header(config):
+    receipt = format_receipt([("Book", 10.0, 1)], 10.0, "cash", "txn1", config)
+    assert b"TEST SHOP\n" + BOLD_OFF + b"\x1b\x61\x00" in receipt
+
+
+def test_receipt_total_is_bold_double_height(config):
+    receipt = format_receipt([("Book", 10.0, 1)], 10.0, "cash", "txn1", config)
+    styled = BOLD_ON + DOUBLE_HEIGHT_ON + b"TOTAL"
+    assert styled in receipt
+    after = receipt[receipt.index(styled):]
+    assert after.index(DOUBLE_HEIGHT_OFF + BOLD_OFF) < after.index(b"Paid:")
+
+
+def test_payment_receipt_total_is_bold_double_height(config):
+    receipt = format_payment_receipt("Room Hire", "A. Reader", 50.0, "card", 7, config)
+    assert BOLD_ON + DOUBLE_HEIGHT_ON + b"TOTAL" in receipt
+
+
+def test_receipt_ends_with_small_version_line(config):
+    receipt = format_receipt([("Book", 10.0, 1)], 10.0, "cash", "txn1", config)
+    line = f"Colophon v{APP_VERSION} · built by Industrial Automata".encode(CODEPAGE)
+    assert FONT_B + line in receipt
+    assert receipt.index(b"Thanks!") < receipt.index(line)
 
 
 # ── print_receipt ───────────────────────────────────────────────
