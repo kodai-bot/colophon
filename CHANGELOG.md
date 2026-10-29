@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.13.0 — 2026-10-29
+
+- Receipts carry a little more information without using much more
+  paper. Under the shop name they show the address line from the
+  settings (`shop.address_line`, for us "Sligo  F91 DVY4").
+- Sale receipts now show a sale number (for example
+  "Sale no. 20261029-143012"), so a receipt can be matched to the sale.
+  Payment receipts keep their P- numbers.
+- The TOTAL line prints in bold, double-height text, like the card
+  machine's slips.
+- At the bottom, in small print, is the app version and
+  "built by Industrial Automata".
+
 ## v1.12.0 — 2026-10-28
 
 - Intake has a new **[O] Sort** key. It switches the list between the

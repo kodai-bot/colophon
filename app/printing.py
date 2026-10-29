@@ -13,6 +13,7 @@ import subprocess
 from datetime import datetime
 from typing import Protocol
 
+from app import APP_VERSION
 from app.payment_methods import get_method
 
 CODEPAGE = "cp858"  # matches SELECT_CODEPAGE_PC858 below (PC858 has the Euro sign)
@@ -23,6 +24,10 @@ BOLD_ON = b"\x1b\x45\x01"
 BOLD_OFF = b"\x1b\x45\x00"
 ALIGN_CENTER = b"\x1b\x61\x01"
 ALIGN_LEFT = b"\x1b\x61\x00"
+DOUBLE_HEIGHT_ON = b"\x1b\x21\x10"
+DOUBLE_HEIGHT_OFF = b"\x1b\x21\x00"
+FONT_A = b"\x1b\x4d\x00"
+FONT_B = b"\x1b\x4d\x01"  # smaller font (56 chars on 80mm), for the version line
 CUT_COMMANDS = {
     "partial": b"\x1d\x56\x01",
     "full": b"\x1d\x56\x00",
@@ -59,24 +64,36 @@ def format_line_item(title: str, price: float, quantity: int, width: int) -> str
     return title + "\n" + price_str.rjust(width)
 
 
-def _build_receipt(body_lines: list[str], payment_method: str, config: dict) -> bytes:
+def _build_receipt(
+    body_lines: list[str],
+    total_line: str,
+    tail_lines: list[str],
+    payment_method: str,
+    config: dict,
+) -> bytes:
     """
     Wrap receipt body lines in the parts every receipt shares: the drawer
-    kick (cash only, when enabled), the shop name header, the footer line
-    and the paper cut.
+    kick (cash only, when enabled), the shop name and address header, the
+    TOTAL line in bold double height, the footer line, the small version
+    line and the paper cut.
     """
     printer_cfg = config.get("printer", {})
     cut_mode = printer_cfg.get("cut_mode", "partial")
     footer = printer_cfg.get("footer_line", "")
-    shop_name = config.get("shop", {}).get("name", "Shop")
+    shop_cfg = config.get("shop", {})
+    shop_name = shop_cfg.get("name", "Shop")
+    address = shop_cfg.get("address_line", "")
     method = get_method(payment_method)
     kick_drawer = bool(method and method.kicks_drawer) and printer_cfg.get("cash_drawer", False)
     drawer_pin = printer_cfg.get("drawer_pin", 2)
 
-    body_lines = list(body_lines)
+    tail_lines = list(tail_lines)
     if footer:
-        body_lines.append("")
-        body_lines.append(footer)
+        tail_lines.append("")
+        tail_lines.append(footer)
+
+    def text(lines: list[str]) -> bytes:
+        return ("\n".join(lines) + "\n").encode(CODEPAGE, errors="replace")
 
     out = bytearray()
     out += INIT
@@ -85,9 +102,17 @@ def _build_receipt(body_lines: list[str], payment_method: str, config: dict) -> 
         out += DRAWER_KICK.get(drawer_pin, DRAWER_KICK[2])
     out += SELECT_CODEPAGE_PC858
     out += ALIGN_CENTER + BOLD_ON
-    out += (shop_name.upper() + "\n").encode(CODEPAGE, errors="replace")
-    out += BOLD_OFF + ALIGN_LEFT
-    out += ("\n".join(body_lines) + "\n").encode(CODEPAGE, errors="replace")
+    out += text([shop_name.upper()])
+    out += BOLD_OFF
+    if address:
+        out += text([address])
+    out += ALIGN_LEFT
+    out += text(body_lines)
+    out += BOLD_ON + DOUBLE_HEIGHT_ON + text([total_line]) + DOUBLE_HEIGHT_OFF + BOLD_OFF
+    out += text(tail_lines)
+    out += ALIGN_CENTER + FONT_B
+    out += text([f"Colophon v{APP_VERSION} · built by Industrial Automata"])
+    out += FONT_A + ALIGN_LEFT
     out += b"\n\n\n"
     out += CUT_COMMANDS.get(cut_mode, CUT_COMMANDS["partial"])
     return bytes(out)
@@ -103,13 +128,18 @@ def format_receipt(
     """Build the full ESC/POS byte sequence for a Counter-mode receipt."""
     width = config.get("printer", {}).get("paper_width_chars", 42)
 
-    body_lines = [datetime.now().strftime("%a %d %b %Y  %H:%M"), ""]
+    body_lines = [
+        datetime.now().strftime("%a %d %b %Y  %H:%M"),
+        f"Sale no. {txn_id.replace('_', '-')}",
+        "",
+    ]
     for title, price, quantity in items:
         body_lines.append(format_line_item(title, price, quantity, width))
     body_lines.append("-" * width)
-    body_lines.append(format_line_item("TOTAL", total, 1, width))
-    body_lines.append(f"Paid: {payment_method.upper()}")
-    return _build_receipt(body_lines, payment_method, config)
+    total_line = format_line_item("TOTAL", total, 1, width)
+    return _build_receipt(
+        body_lines, total_line, [f"Paid: {payment_method.upper()}"], payment_method, config
+    )
 
 
 def format_payment_receipt(
@@ -141,9 +171,10 @@ def format_payment_receipt(
     if notes:
         body_lines.append(notes)
     body_lines.append("-" * width)
-    body_lines.append(format_line_item("TOTAL", amount, 1, width))
-    body_lines.append(f"Paid: {payment_method.upper()}")
-    return _build_receipt(body_lines, payment_method, config)
+    total_line = format_line_item("TOTAL", amount, 1, width)
+    return _build_receipt(
+        body_lines, total_line, [f"Paid: {payment_method.upper()}"], payment_method, config
+    )
 
 
 class Printer(Protocol):
